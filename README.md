@@ -23,8 +23,11 @@ git clone <repository-url>
 cd claw-agent
 
 # 安装依赖
-pip install -r requirements.txt
+uv sync
 
 # 配置环境变量
 cp .env.example .env
 # 编辑.env文件，填入你的配置
+
+# 运行项目
+uv run python src/app.py

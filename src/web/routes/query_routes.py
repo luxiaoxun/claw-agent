@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import JSONResponse
 from services.es_query_service import ElasticsearchQueryService
 from config.logging_config import get_logger
+from typing import Optional
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/query", tags=["query"])
@@ -14,8 +13,8 @@ query_service = ElasticsearchQueryService()
 
 # 定义请求模型
 class QueryRequest(BaseModel):
-    timeType: int
-    timeLimit: str
+    timeType: int = 1
+    timeLimit: Optional[str] = None
     query: str
     indexName: str
     pageNum: int = 1
@@ -26,7 +25,7 @@ class ParseRequest(BaseModel):
     query: str
 
 
-@router.post("/query")
+@router.post("/data")
 async def es_query(request: QueryRequest):
     """
     测试查询API - 直接使用SPL查询Elasticsearch，不经过AI
@@ -56,8 +55,8 @@ async def es_query(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/query/parse")
-async def test_parse(request: ParseRequest):
+@router.post("/spl/parse")
+async def test_spl_parse(request: ParseRequest):
     """
     测试SPL解析 - 查看SPL被解析成什么形式的ES查询DSL
     """

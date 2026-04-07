@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from core.models.responses import ToolsResponse, ToolInfo
 from web.dependencies import get_conversation_manager
 from config.logging_config import get_logger
@@ -38,7 +37,6 @@ async def get_tool(
 ):
     """获取单个工具信息"""
     try:
-        # 关键修改3：通过依赖注入获取conversation_manager
         if not conversation_manager:
             raise HTTPException(status_code=503, detail="Agent未初始化")
 
@@ -55,7 +53,6 @@ async def get_tool(
             is_high_risk=tool.get('is_high_risk', False)
         )
 
-        # 关键修改4：直接返回字典
         return tool_info.to_dict()
 
     except HTTPException:

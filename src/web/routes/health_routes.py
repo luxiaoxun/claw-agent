@@ -9,11 +9,10 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.get("/health")
-async def health(conversation_manager=Depends(get_conversation_manager)):
+@router.get("/status")
+async def health_status(conversation_manager=Depends(get_conversation_manager)):
     """健康检查"""
     try:
-        # 关键修改1：通过依赖注入获取conversation_manager
         agent_initialized = conversation_manager is not None
 
         tools_loaded = 0
@@ -21,7 +20,6 @@ async def health(conversation_manager=Depends(get_conversation_manager)):
             tools_loaded = len(conversation_manager.agent_executor.tools)
 
         if agent_initialized:
-            # 关键修改2：直接返回字典，FastAPI自动序列化
             response = HealthResponse.healthy(
                 tools_loaded=tools_loaded,
                 version=settings.APP_VERSION
@@ -29,7 +27,6 @@ async def health(conversation_manager=Depends(get_conversation_manager)):
             return response.to_dict()
         else:
             response = HealthResponse.initializing(version=settings.APP_VERSION)
-            # 关键修改3：返回503状态码需要使用JSONResponse
             return JSONResponse(
                 status_code=503,
                 content=response.to_dict()

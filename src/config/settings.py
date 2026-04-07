@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # LLM配置
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4")
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
+    OPENAI_BASE_URL: Optional[str] = os.getenv("OPENAI_BASE_URL")
     LLM_TEMPERATURE: float = 0.0
 
     # MCP配置
