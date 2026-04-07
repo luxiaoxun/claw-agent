@@ -1,0 +1,30 @@
+# Claw Agent
+
+一个基于LangChain的AI Agent
+
+## 功能特性
+
+- 数据查询：通过自然语言查询Elasticsearch
+- 告警解读：通过AI解读分析告警日志
+
+## 快速开始
+
+### 环境要求
+
+- Python 3.12+
+- OpenAI API Key
+- MCP服务器（可选）
+
+### 安装
+
+```bash
+# 克隆项目
+git clone <repository-url>
+cd claw-agent
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 配置环境变量
+cp .env.example .env
+# 编辑.env文件，填入你的配置
