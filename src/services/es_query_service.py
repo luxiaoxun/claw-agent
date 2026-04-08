@@ -118,7 +118,7 @@ class ElasticsearchQueryService:
             logger.info(f"最终 search_body: {search_body}")
 
             # 6. 执行搜索
-            response = await self.es_client.async_client.search(
+            response = self.es_client.client.search(
                 index=index_pattern,
                 body=search_body
             )
@@ -130,7 +130,7 @@ class ElasticsearchQueryService:
                 "hits": response['hits']['hits'],
                 "took": response['took'],
                 "timed_out": response['timed_out'],
-                "sort": sort_rules  # 返回使用的排序规则，方便调试
+                "sort": sort_rules
             }
 
         except Exception as e:

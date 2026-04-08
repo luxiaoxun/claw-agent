@@ -1,4 +1,4 @@
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import Elasticsearch
 from config.settings import settings
 from config.logging_config import get_logger
 
@@ -6,9 +6,9 @@ logger = get_logger(__name__)
 
 
 class ElasticsearchClient:
-    """Elasticsearch客户端管理器 - 单例模式，只用异步客户端"""
+    """Elasticsearch客户端管理器 - 单例模式，使用同步客户端"""
     _instance = None
-    _async_client = None
+    _client = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -16,11 +16,11 @@ class ElasticsearchClient:
         return cls._instance
 
     def __init__(self):
-        if self._async_client is None:
+        if self._client is None:
             self._init_client()
 
     def _init_client(self):
-        """初始化异步Elasticsearch客户端"""
+        """初始化同步Elasticsearch客户端"""
         hosts = [host.strip() for host in settings.ES_HOSTS.split(",")]
 
         client_config = {
@@ -42,25 +42,25 @@ class ElasticsearchClient:
             client_config["verify_certs"] = False
             client_config["ssl_show_warn"] = False
 
-        self._async_client = AsyncElasticsearch(**client_config)
-        logger.info(f"Connected to Elasticsearch (async): {hosts}")
+        self._client = Elasticsearch(**client_config)
+        logger.info(f"Connected to Elasticsearch (sync): {hosts}")
 
     @property
-    def async_client(self):
-        return self._async_client
+    def client(self):
+        return self._client
 
-    async def close(self):
-        """关闭异步客户端连接"""
-        if self._async_client:
-            await self._async_client.close()
+    def close(self):
+        """关闭同步客户端连接"""
+        if self._client:
+            self._client.close()
 
 
-# 创建全局异步客户端实例
+# 创建全局同步客户端实例
 _es_client_instance = None
 
 
 def get_es_client():
-    """获取全局ES异步客户端实例"""
+    """获取全局ES同步客户端实例"""
     global _es_client_instance
     if _es_client_instance is None:
         _es_client_instance = ElasticsearchClient()

@@ -8,7 +8,7 @@ logger = get_logger(__name__)
 
 
 class SearchDataInput(BaseModel):
-    """搜索文档工具的输入参数模型 - 精简且清晰"""
+    """搜索文档工具的输入参数模型"""
 
     indexName: str = Field(
         description="索引类型: event(日志)/attack(告警)/incident(安全事件)"

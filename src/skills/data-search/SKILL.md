@@ -68,9 +68,14 @@ SPL查询语法：
 - `5`: Custom (requires timeLimit)
 
 ### Step 4: Format Response
-按以下JSON格式返回结果，不需要额外的文字说明：
+按以下要求返回结果
 
-```json
+**重要约束：**
+- 严禁在输出内容前后添加 ````json` 或 ```` ` 等 Markdown 代码块标记
+- 直接输出纯文本 JSON 格式，第一个字符必须是 `{`，最后一个字符必须是 `}`
+- 不要输出任何解释性文字或换行符（JSON内部换行除外）
+
+示例输出：
 {
   "spl": "translated SPL query",
   "result": {
@@ -80,4 +85,3 @@ SPL查询语法：
     "page_size": 10
   }
 }
-```

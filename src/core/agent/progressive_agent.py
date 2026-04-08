@@ -1,9 +1,8 @@
-from typing import Dict, Any, List, Optional, Set, Tuple
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, SystemMessage
+from typing import Dict, Any, List, Optional
+from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from langchain_openai import ChatOpenAI
-from core.skill_loader import SkillLoader, SkillMetadata
+from core.skill_loader import SkillLoader
 from core.tools.file_read_tool import FileReadTool
 from core.tools.es_search_data_tool import SearchDataTool
 from core.tools.mcp_client import MCPClientManager
@@ -16,7 +15,6 @@ logger = get_logger(__name__)
 class ProgressiveAgent:
     """
     渐进式Agent - 动态工具加载
-    让AI自己选择需要加载的技能
     """
 
     def __init__(self, skills_dir: str = "skills"):
@@ -34,9 +32,9 @@ class ProgressiveAgent:
         self.mcp_tools: List = []
         self.use_mcp = settings.USE_MCP
 
-        # LLM相关
+        # Agent
         self.llm: Optional[ChatOpenAI] = None
-        self.agent_executor: Optional[AgentExecutor] = None
+        self.agent = None  # Runnable agent
         self.system_prompt: Optional[str] = None
 
     async def initialize(self):
@@ -44,22 +42,20 @@ class ProgressiveAgent:
         try:
             self._init_llm()
 
-            # 如果需要，加载MCP工具
             if self.use_mcp:
                 await self._load_mcp_tools()
 
-            # 构建基础系统提示词
             self._build_base_system_prompt()
 
-            # 创建基础Agent（只有file_read和MCP工具）
+            # 创建Agent
             all_tools = self.base_tools + self.mcp_tools
-            self._create_agent_executor(all_tools)
+            self._create_agent(all_tools)
 
-            logger.info(f"ProgressiveAgent初始化完成，模式: {self.get_mode()}, 基础工具数: {len(all_tools)}")
+            logger.info(f"Agent初始化完成，模式: {self.get_mode()}, 工具数: {len(all_tools)}")
             return self
 
         except Exception as e:
-            logger.error(f"ProgressiveAgent初始化失败: {str(e)}")
+            logger.error(f"Agent初始化失败: {str(e)}")
             raise
 
     def _init_llm(self):
@@ -71,6 +67,7 @@ class ProgressiveAgent:
             model=settings.LLM_MODEL,
             temperature=settings.LLM_TEMPERATURE,
             api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_BASE_URL
         )
         logger.info(f"LLM初始化成功: {settings.LLM_MODEL}")
 
@@ -86,39 +83,21 @@ class ProgressiveAgent:
             self.use_mcp = False
             logger.warning("MCP连接失败，将仅使用本地工具")
 
-    def _create_agent_executor(self, tools: List):
-        """创建Agent执行器"""
-        prompt = self._create_prompt_template()
+    def _create_agent(self, tools: List):
+        from langchain.agents.middleware import ToolRetryMiddleware
 
-        agent = create_openai_tools_agent(
-            llm=self.llm,
+        self.agent = create_agent(
+            model=self.llm,
             tools=tools,
-            prompt=prompt
+            system_prompt=self.system_prompt,
+            middleware=[
+                ToolRetryMiddleware(max_retries=2),  # 工具调用失败时自动重试
+            ]
         )
-
-        self.agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=settings.MAX_ITERATIONS,
-            early_stopping_method="generate",
-            return_intermediate_steps=True
-        )
-
-        logger.debug(f"Agent执行器创建完成，工具数: {len(tools)}")
-
-    def _create_prompt_template(self) -> ChatPromptTemplate:
-        """创建提示词模板"""
-        return ChatPromptTemplate.from_messages([
-            ("system", "{system_prompt}"),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
+        logger.debug(f"Agent创建完成")
 
     def _build_base_system_prompt(self):
-        """构建基础系统提示词（未加载技能时）"""
+        """构建基础系统提示词"""
         all_skills = self.skill_loader.get_all_skill_descriptions()
 
         prompt = f"""你是一个智能助手，能够处理各种数据查询和分析任务。
@@ -153,56 +132,88 @@ class ProgressiveAgent:
 严格按照技能文件中定义的输出格式返回结果。
 
 ## 可用工具
-
 - **file_read**: 读取技能文件，获取详细的执行指令
-
-## 示例
-
-### 示例1：数据查询类任务
-用户: "查询今天的高危告警"
-
-你应该：
-1. 选择技能: data-search
-2. 调用: file_read(path="data-search/SKILL.md")
-3. 按技能指示使用 search_data 工具查询数据
-
-### 示例2：分析解读类任务
-用户: "请分析这条告警: {{...}}"
-
-你应该：
-1. 选择技能: log-alert-explain
-2. 调用: file_read(path="log-alert-explain/SKILL.md")
-3. 按技能指示进行分析，不需要调用工具
+- **search_data**: 搜索日志/告警/安全事件数据
 
 ## 注意事项
-
 - **必须**先加载技能文件，再执行任务
 - 技能文件中的指令优先级最高
 - 严格按照技能文件要求的格式返回结果
 """
         self.system_prompt = prompt
 
-    async def process(self, message: str, chat_history: Optional[List] = None) -> Dict[str, Any]:
+    async def process(self, message: str, chat_history: Optional[List[BaseMessage]] = None) -> Dict[str, Any]:
         """
         处理用户消息
-        让AI自己决定使用哪个技能
+
+        Returns:
+            包含 messages 列表的字典，符合 LangChain 1.0 标准
         """
-        if not self.agent_executor:
+        if not self.agent:
             raise RuntimeError("Agent未初始化")
 
-        # 直接处理消息，让AI自己决定如何执行
-        # AI会根据系统提示词中的"可用技能列表"和"工作流程"来决定：
-        # 1. 是否需要加载技能
-        # 2. 加载哪个技能
-        # 3. 是否需要调用工具
+        if chat_history is None:
+            chat_history = []
 
-        input_data = {
-            "system_prompt": self.system_prompt,
-            "input": message,
-            "chat_history": chat_history or []
+        # 构建消息列表
+        messages = chat_history + [HumanMessage(content=message)]
+
+        # 调用 Agent
+        result = await self.agent.ainvoke(
+            {"messages": messages}
+        )
+
+        # 返回标准格式
+        return {
+            "messages": result.get("messages", []),
+            "input_message": message
         }
 
-        return await self.agent_executor.ainvoke(input_data)
+    async def stream_process(self, message: str, chat_history: Optional[List[BaseMessage]] = None):
+        """流式处理用户消息"""
+        if not self.agent:
+            raise RuntimeError("Agent未初始化")
+
+        if chat_history is None:
+            chat_history = []
+
+        messages = chat_history + [HumanMessage(content=message)]
+
+        async for chunk in self.agent.astream(
+                {"messages": messages}
+        ):
+            yield chunk
+
+    def get_tool_calls_from_result(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        从结果中提取所有工具调用信息
+        """
+        tool_calls = []
+        messages = result.get("messages", [])
+
+        for msg in messages:
+            # AI 消息中的工具调用请求
+            if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls'):
+                for tc in msg.tool_calls:
+                    tool_calls.append({
+                        "type": "request",
+                        "id": tc.get('id'),
+                        "name": tc.get('name'),
+                        "args": tc.get('args', {}),
+                        "timestamp": getattr(msg, 'timestamp', None)
+                    })
+
+            # 工具执行结果
+            if isinstance(msg, ToolMessage):
+                tool_calls.append({
+                    "type": "result",
+                    "id": getattr(msg, 'tool_call_id', None),
+                    "name": getattr(msg, 'name', 'unknown'),
+                    "content": msg.content,
+                    "timestamp": getattr(msg, 'timestamp', None)
+                })
+
+        return tool_calls
 
     async def close(self):
         """关闭连接"""
@@ -214,7 +225,6 @@ class ProgressiveAgent:
         """获取所有工具信息"""
         tools_info = []
 
-        # 基础工具
         for tool in self.base_tools:
             tools_info.append({
                 "name": getattr(tool, 'name', str(tool)),
@@ -223,7 +233,6 @@ class ProgressiveAgent:
                 "is_high_risk": hasattr(tool, 'name') and tool.name in settings.HIGH_RISK_TOOLS
             })
 
-        # MCP工具
         for tool in self.mcp_tools:
             tools_info.append({
                 "name": getattr(tool, 'name', str(tool)),
@@ -231,16 +240,6 @@ class ProgressiveAgent:
                 "type": "mcp_tool",
                 "is_high_risk": hasattr(tool, 'name') and tool.name in settings.HIGH_RISK_TOOLS
             })
-
-        # 技能列表
-        # skills = self.skill_loader.get_all_skill_descriptions()
-        # for skill in skills:
-        #     tools_info.append({
-        #         "name": skill["name"],
-        #         "description": skill["description"],
-        #         "type": "skill",
-        #         "is_high_risk": False
-        #     })
 
         return tools_info
 

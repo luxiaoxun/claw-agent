@@ -1,7 +1,6 @@
 from typing import Optional, Type, Union, Dict, Any
-from langchain_core.tools import BaseTool
+from langchain.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
-import os
 from pathlib import Path
 from config.logging_config import get_logger
 

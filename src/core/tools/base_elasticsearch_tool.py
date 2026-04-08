@@ -1,12 +1,12 @@
 from typing import Any, Dict, Optional, Type
-from langchain_core.tools import BaseTool
+from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from clients.elasticsearch_client import get_es_client
 import asyncio
 
 
 class BaseElasticsearchTool(BaseTool):
-    """Elasticsearch工具基类 - 继承自LangChain的BaseTool"""
+    """Elasticsearch工具基类"""
 
     # 定义Pydantic模型字段
     name: str = Field(description="工具名称")
