@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4")
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     OPENAI_BASE_URL: Optional[str] = os.getenv("OPENAI_BASE_URL")
-    LLM_TEMPERATURE: float = 0.0
+    LLM_TEMPERATURE: float = 0.1
 
     # MCP配置
     USE_MCP: bool = os.getenv("USE_MCP", "false").lower() == "true"
@@ -38,12 +38,7 @@ class Settings(BaseSettings):
     MAX_HISTORY_LENGTH: int = 10
 
     # 安全配置
-    HIGH_RISK_TOOLS: List[str] = Field(
-        default_factory=lambda: [
-            "delete_document", "block_ips"
-        ],
-        description="高风险操作列表，需要用户确认"
-    )
+    HIGH_RISK_TOOLS: List[str] = ["block_ips"]
 
     class Config:
         env_file = ".env"

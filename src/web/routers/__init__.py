@@ -1,8 +1,8 @@
 from fastapi import APIRouter
-from web.routes.chat_routes import router as chat_router
-from web.routes.health_routes import router as health_router
-from web.routes.tool_routes import router as tool_router
-from web.routes.query_routes import router as query_router
+from web.routers.chat_router import router as chat_router
+from web.routers.health_router import router as health_router
+from web.routers.tool_router import router as tool_router
+from web.routers.query_router import router as query_router
 
 # 创建API主路由器
 api_router = APIRouter()

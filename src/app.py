@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from config.settings import settings
 from config.logging_config import setup_logging, get_logger
-from web.routes import api_router
+from web.routers import api_router
 from web.middlewares.error_handler import register_error_handlers
 
 logger = get_logger(__name__)

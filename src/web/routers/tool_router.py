@@ -11,16 +11,13 @@ router = APIRouter(prefix="/tools", tags=["tools"])
 async def list_tools(conversation_manager=Depends(get_conversation_manager)):
     """列出可用的工具"""
     try:
-        # 关键修改1：通过依赖注入获取conversation_manager
         if not conversation_manager:
             raise HTTPException(status_code=503, detail="Agent未初始化")
 
         tools_info = conversation_manager.get_tools_info()
 
-        # 使用工厂方法创建响应
         response = ToolsResponse.from_tool_list(tools_info)
 
-        # 关键修改2：直接返回字典
         return response.to_dict()
 
     except HTTPException:

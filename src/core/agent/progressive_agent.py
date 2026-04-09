@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model, BaseChatModel
 from core.skill_loader import SkillLoader
 from core.tools.file_read_tool import FileReadTool
 from core.tools.es_search_data_tool import SearchDataTool
@@ -33,7 +33,7 @@ class ProgressiveAgent:
         self.use_mcp = settings.USE_MCP
 
         # Agent
-        self.llm: Optional[ChatOpenAI] = None
+        self.llm: Optional[BaseChatModel] = None
         self.agent = None  # Runnable agent
         self.system_prompt: Optional[str] = None
 
@@ -63,7 +63,8 @@ class ProgressiveAgent:
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY 未设置")
 
-        self.llm = ChatOpenAI(
+        self.llm = init_chat_model(
+            model_provider="openai",
             model=settings.LLM_MODEL,
             temperature=settings.LLM_TEMPERATURE,
             api_key=settings.OPENAI_API_KEY,
