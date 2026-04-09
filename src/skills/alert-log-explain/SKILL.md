@@ -1,12 +1,12 @@
 ---
-name: log-alert-explain
-description: 解读日志或告警中的关键信息，给出结论和建议。
+name: alert-log-explain
+description: 解读告警日志中的关键信息，给出结论和建议。
 ---
 
-# Log or Alert Explain Skill
+# Alert or Attack Log Explain Skill
 
 ## Overview
-本技能用于日志或者告警的解读，分析告警中的攻击结果、严重等级等信息是否正确，如果不正确给出正确结论和解释，并给出处置建议。
+本技能用于告警或攻击日志的解读，分析告警中的攻击结果、严重等级等信息是否正确，如果不正确给出正确结论和解释，并给出处置建议。
 
 ## When to Use
 - 用户提供了一条日志（log）或告警（alert）内容，希望理解其含义
