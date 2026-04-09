@@ -17,8 +17,10 @@ class ConversationManager:
     def __init__(self):
         self.progressive_agent: Optional[ProgressiveAgent] = None
         self.conversation_history: List[BaseMessage] = []
-        self.pending_confirmation: Optional[Dict[str, Any]] = None
-        self.pending_operation_message: Optional[str] = None  # 待确认的原始消息
+
+        # 流式处理相关
+        self._current_stream_response = ""
+        self._streaming_tool_calls = []
 
     async def initialize(self):
         """初始化对话管理器"""
@@ -32,15 +34,11 @@ class ConversationManager:
             raise
 
     async def process_message(self, message: str) -> str:
-        """处理用户消息"""
+        """处理用户消息（非流式）"""
         if not self.progressive_agent:
             raise RuntimeError("Agent尚未初始化")
 
         logger.info(f"处理用户消息: {message}")
-
-        # 检查是否有待确认的操作
-        if self.pending_confirmation:
-            return await self._handle_confirmation(message)
 
         try:
             # 调用 Agent 处理消息
@@ -49,18 +47,6 @@ class ConversationManager:
                 chat_history=self.conversation_history[
                              -settings.MAX_HISTORY_LENGTH:] if self.conversation_history else None
             )
-
-            # 检查是否需要用户确认
-            if self._has_high_risk_tool_calls(result):
-                tool_calls = self._get_high_risk_tool_calls(result)
-                self.pending_confirmation = {
-                    "tool_calls": tool_calls,
-                    "result": result
-                }
-                self.pending_operation_message = message
-
-                # 返回确认提示
-                return self._build_confirmation_prompt(tool_calls)
 
             # 提取响应文本并更新历史
             response_text = self._extract_response_text(result)
@@ -71,124 +57,6 @@ class ConversationManager:
         except Exception as e:
             logger.error(f"处理消息失败: {str(e)}", exc_info=True)
             return f"处理消息时出错: {str(e)}"
-
-    async def _handle_confirmation(self, message: str) -> str:
-        """处理用户确认/取消"""
-        message_lower = message.lower().strip()
-
-        if message_lower in ["确认", "confirm", "yes", "是"]:
-            # 用户确认执行
-            logger.info("用户确认执行高风险操作")
-
-            # 获取待确认的操作
-            pending = self.pending_confirmation
-            self.pending_confirmation = None
-
-            # 重新执行原始消息（Agent 会自动执行工具）
-            if self.pending_operation_message:
-                original_message = self.pending_operation_message
-                self.pending_operation_message = None
-
-                # 重新执行
-                result = await self.progressive_agent.process(
-                    original_message,
-                    chat_history=self.conversation_history[
-                                 -settings.MAX_HISTORY_LENGTH:] if self.conversation_history else None
-                )
-
-                response_text = self._extract_response_text(result)
-                self._update_history(original_message, response_text, result.get("messages", []))
-
-                return f"操作已确认执行\n\n{response_text}"
-            else:
-                return "无法重新执行操作，请重新描述您的需求"
-
-        elif message_lower in ["取消", "cancel", "no", "否"]:
-            # 用户取消操作
-            tool_names = [tc.get('name', 'unknown') for tc in self.pending_confirmation.get("tool_calls", [])]
-            logger.info(f"用户取消了高风险操作: {', '.join(tool_names)}")
-
-            cancel_message = f"操作已取消（涉及工具: {', '.join(tool_names)}）"
-
-            # 记录取消到历史
-            self.conversation_history.append(AIMessage(content=cancel_message))
-
-            self.pending_confirmation = None
-            self.pending_operation_message = None
-
-            return f"{cancel_message}"
-
-        else:
-            # 无效输入，重新提示
-            tool_calls = self.pending_confirmation.get("tool_calls", [])
-            return self._build_confirmation_prompt(tool_calls)
-
-    def _has_high_risk_tool_calls(self, result: Dict[str, Any]) -> bool:
-        """检查是否有高风险工具调用"""
-        tool_calls = self.progressive_agent.get_tool_calls_from_result(result)
-
-        for tc in tool_calls:
-            if tc.get("type") == "request" and tc.get("name") in settings.HIGH_RISK_TOOLS:
-                return True
-
-        return False
-
-    def _get_high_risk_tool_calls(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """获取所有高风险工具调用"""
-        high_risk_calls = []
-        tool_calls = self.progressive_agent.get_tool_calls_from_result(result)
-
-        for tc in tool_calls:
-            if tc.get("type") == "request" and tc.get("name") in settings.HIGH_RISK_TOOLS:
-                high_risk_calls.append(tc)
-
-        return high_risk_calls
-
-    def _build_confirmation_prompt(self, tool_calls: List[Dict[str, Any]]) -> str:
-        """构建确认提示信息"""
-        if not tool_calls:
-            return "未检测到需要确认的操作"
-
-        prompt = "**高风险操作确认**\n\n"
-        prompt += "您即将执行以下高风险操作：\n\n"
-
-        for i, tc in enumerate(tool_calls, 1):
-            tool_name = tc.get("name", "unknown")
-            args = tc.get("args", {})
-
-            prompt += f"{i}. **工具**: `{tool_name}`\n"
-            if args:
-                prompt += f"   **参数**: {self._format_args_for_display(args)}\n"
-            prompt += "\n"
-
-        prompt += "请回复 **确认** 以继续执行，或 **取消** 以中止操作。"
-
-        return prompt
-
-    def _format_args_for_display(self, args: Dict[str, Any]) -> str:
-        """格式化参数用于显示"""
-        if not args:
-            return "无"
-
-        # 只显示关键参数，避免过长
-        important_keys = ['indexName', 'query', 'path', 'skill_name', 'timeType', 'pageNum']
-        formatted = []
-
-        for key in important_keys:
-            if key in args:
-                value = str(args[key])
-                if len(value) > 50:
-                    value = value[:50] + "..."
-                formatted.append(f"{key}={value}")
-
-        if formatted:
-            return ", ".join(formatted)
-
-        # 如果没有关键参数，显示所有参数（截断）
-        args_str = str(args)
-        if len(args_str) > 100:
-            args_str = args_str[:100] + "..."
-        return args_str
 
     def _extract_response_text(self, result: Dict[str, Any]) -> str:
         """从结果中提取最终的响应文本"""
@@ -207,15 +75,11 @@ class ConversationManager:
         self.conversation_history.append(HumanMessage(content=user_message))
 
         # 添加完整的消息链（保留工具调用等中间信息）
-        # 但为了避免历史过长，只保留关键的 AI 响应
         for msg in messages:
             if isinstance(msg, AIMessage):
                 # 如果有工具调用，保留完整消息
                 if hasattr(msg, 'tool_calls') and msg.tool_calls:
                     self.conversation_history.append(msg)
-                else:
-                    # 简单响应，已经通过 assistant_response 添加，避免重复
-                    pass
             elif isinstance(msg, ToolMessage):
                 # 保留工具执行结果供上下文使用
                 self.conversation_history.append(msg)
@@ -230,11 +94,156 @@ class ConversationManager:
         if len(self.conversation_history) > max_history * 2:
             self.conversation_history = self.conversation_history[-max_history * 2:]
 
+    async def process_message_stream(self, message: str):
+        """
+        流式处理用户消息
+        Yields: 流式响应块
+        """
+        if not self.progressive_agent:
+            raise RuntimeError("Agent尚未初始化")
+
+        logger.info(f"流式处理用户消息: {message}")
+
+        try:
+            # 重置流式状态
+            self._current_stream_response = ""
+            self._streaming_tool_calls = []
+
+            # 调用 Agent 的流式处理
+            async for chunk in self.progressive_agent.stream_process(
+                    message,
+                    chat_history=self.conversation_history[
+                                 -settings.MAX_HISTORY_LENGTH:] if self.conversation_history else None
+            ):
+                # 解析 chunk
+                for chunk_type, chunk_data in self._parse_stream_chunk(chunk):
+                    if chunk_type == "tool_call":
+                        # 发送工具调用信息
+                        yield {
+                            "type": "tool_call",
+                            "tool_name": chunk_data.get("tool_name"),
+                            "tool_args": chunk_data.get("tool_args")
+                        }
+
+                    elif chunk_type == "tool_result":
+                        # 发送工具结果
+                        yield {
+                            "type": "tool_result",
+                            "tool_name": chunk_data.get("tool_name"),
+                            "result": chunk_data.get("result"),
+                            "status": chunk_data.get("status", "success")
+                        }
+
+                    elif chunk_type == "content":
+                        # 累积响应
+                        self._current_stream_response += chunk_data
+                        yield {
+                            "type": "content",
+                            "content": chunk_data
+                        }
+
+                    elif chunk_type == "error":
+                        yield {
+                            "type": "error",
+                            "content": chunk_data
+                        }
+
+            # 流式处理完成后，更新对话历史
+            if self._current_stream_response:
+                # 注意：这里简化了历史更新，实际可能需要从流式数据中重建完整消息
+                # 对于流式响应，我们可以只保存最终的响应文本
+                self.conversation_history.append(HumanMessage(content=message))
+                self.conversation_history.append(AIMessage(content=self._current_stream_response))
+
+                # 限制历史记录长度
+                max_history = getattr(settings, 'MAX_HISTORY_LENGTH', 50)
+                if len(self.conversation_history) > max_history * 2:
+                    self.conversation_history = self.conversation_history[-max_history * 2:]
+
+            # 发送完成信号
+            yield {
+                "type": "complete",
+                "full_response": self._current_stream_response
+            }
+
+        except Exception as e:
+            logger.error(f"流式处理消息失败: {str(e)}", exc_info=True)
+            yield {
+                "type": "error",
+                "content": f"处理消息时出错: {str(e)}"
+            }
+
+    def _parse_stream_chunk(self, chunk):
+        """
+        解析 Agent 流式输出的 chunk
+        返回: (type, data) 元组
+        """
+        # 处理错误信息
+        if isinstance(chunk, dict) and chunk.get("type") == "error":
+            yield "error", chunk.get("error", "未知错误")
+            return
+
+        # 处理字典类型的 chunk
+        if isinstance(chunk, dict):
+            # 检查是否有 messages 字段
+            if "messages" in chunk:
+                messages = chunk["messages"]
+                if messages:
+                    last_message = messages[-1]
+
+                    # AI 消息
+                    if hasattr(last_message, "type") and last_message.type == "ai":
+                        # 检查是否有工具调用
+                        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                            for tool_call in last_message.tool_calls:
+                                yield "tool_call", {
+                                    "tool_name": tool_call.get("name"),
+                                    "tool_args": tool_call.get("args", {})
+                                }
+
+                        # 内容流
+                        if hasattr(last_message, "content") and last_message.content:
+                            yield "content", last_message.content
+
+                    # 工具消息
+                    elif hasattr(last_message, "type") and last_message.type == "tool":
+                        yield "tool_result", {
+                            "tool_name": getattr(last_message, "name", "unknown"),
+                            "result": last_message.content,
+                            "status": "success"
+                        }
+
+            # 直接的 chunk 内容
+            elif "content" in chunk:
+                yield "content", chunk["content"]
+
+        # 字符串类型的 chunk
+        elif isinstance(chunk, str):
+            yield "content", chunk
+
+        # 检查是否是 AIMessageChunk
+        elif hasattr(chunk, "content") and chunk.content:
+            yield "content", chunk.content
+
+        # 检查工具调用
+        elif hasattr(chunk, "tool_calls") and chunk.tool_calls:
+            for tool_call in chunk.tool_calls:
+                yield "tool_call", {
+                    "tool_name": tool_call.get("name"),
+                    "tool_args": tool_call.get("args", {})
+                }
+
+        # 检查是否是 ToolMessage
+        elif hasattr(chunk, "type") and chunk.type == "tool":
+            yield "tool_result", {
+                "tool_name": getattr(chunk, "name", "unknown"),
+                "result": chunk.content if hasattr(chunk, "content") else str(chunk),
+                "status": "success"
+            }
+
     def reset_history(self):
         """重置对话历史"""
         self.conversation_history = []
-        self.pending_confirmation = None
-        self.pending_operation_message = None
         logger.info("对话历史已重置")
 
     async def close(self):
@@ -264,8 +273,5 @@ class ConversationManager:
         """获取对话摘要信息"""
         return {
             "total_messages": len(self.conversation_history),
-            "has_pending_confirmation": self.pending_confirmation is not None,
-            "pending_tools": [tc.get('name') for tc in
-                              self.pending_confirmation.get("tool_calls", [])] if self.pending_confirmation else [],
             "agent_mode": self.get_agent_mode()
         }

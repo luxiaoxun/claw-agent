@@ -16,18 +16,24 @@ async def lifespan(app: FastAPI):
     logger.info("系统启动，开始初始化Agent...")
     try:
         from core.agent.conversation_manager import ConversationManager
+        from core.websocket_manager import ws_connection_manager
 
         # 初始化并直接赋值给app.state
         conversation_manager = await ConversationManager().initialize()
         app.state.conversation_manager = conversation_manager
+
+        # 初始化 WebSocket 管理器
+        ws_connection_manager.set_base_manager(conversation_manager)
+        app.state.ws_connection_manager = ws_connection_manager
+
         logger.info("Agent初始化成功")
     except Exception as e:
         logger.error(f"Agent初始化失败: {e}")
         import traceback
         traceback.print_exc()
-        raise  # 启动失败，不让应用继续运行
+        raise
 
-    yield  # 应用运行期间
+    yield
 
     # 关闭时清理
     logger.info("系统关闭，清理资源...")

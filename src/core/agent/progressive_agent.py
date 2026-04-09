@@ -144,7 +144,7 @@ class ProgressiveAgent:
 
     async def process(self, message: str, chat_history: Optional[List[BaseMessage]] = None) -> Dict[str, Any]:
         """
-        处理用户消息
+        处理用户消息（非流式）
 
         Returns:
             包含 messages 列表的字典，符合 LangChain 1.0 标准
@@ -170,7 +170,10 @@ class ProgressiveAgent:
         }
 
     async def stream_process(self, message: str, chat_history: Optional[List[BaseMessage]] = None):
-        """流式处理用户消息"""
+        """
+        流式处理用户消息
+        提供更细粒度的流式输出，包括工具调用和内容
+        """
         if not self.agent:
             raise RuntimeError("Agent未初始化")
 
@@ -179,10 +182,67 @@ class ProgressiveAgent:
 
         messages = chat_history + [HumanMessage(content=message)]
 
-        async for chunk in self.agent.astream(
-                {"messages": messages}
-        ):
-            yield chunk
+        try:
+            # 使用 astream_events 获取更详细的流式事件
+            async for event in self.agent.astream_events(
+                    {"messages": messages},
+                    version="v2"
+            ):
+                event_type = event.get("event")
+
+                # 处理工具调用开始
+                if event_type == "on_tool_start":
+                    yield {
+                        "type": "tool_call",
+                        "tool_name": event.get("name"),
+                        "tool_args": event.get("data", {}).get("input", {}),
+                        "run_id": event.get("run_id")
+                    }
+
+                # 处理工具调用结束
+                elif event_type == "on_tool_end":
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": event.get("name"),
+                        "result": event.get("data", {}).get("output"),
+                        "status": "success"
+                    }
+
+                # 处理工具错误
+                elif event_type == "on_tool_error":
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": event.get("name"),
+                        "result": str(event.get("data", {}).get("error", "未知错误")),
+                        "status": "error"
+                    }
+
+                # 处理 LLM 流式输出
+                elif event_type == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        yield {
+                            "type": "content",
+                            "content": chunk.content
+                        }
+
+                # 处理 LLM 结束（可能包含工具调用）
+                elif event_type == "on_chat_model_end":
+                    output = event.get("data", {}).get("output")
+                    if output and hasattr(output, "tool_calls") and output.tool_calls:
+                        for tool_call in output.tool_calls:
+                            yield {
+                                "type": "tool_call",
+                                "tool_name": tool_call.get("name"),
+                                "tool_args": tool_call.get("args", {})
+                            }
+
+        except Exception as e:
+            logger.error(f"流式处理失败: {str(e)}", exc_info=True)
+            yield {
+                "type": "error",
+                "error": str(e)
+            }
 
     def get_tool_calls_from_result(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -229,16 +289,14 @@ class ProgressiveAgent:
             tools_info.append({
                 "name": getattr(tool, 'name', str(tool)),
                 "description": getattr(tool, 'description', 'No description'),
-                "type": "base_tool",
-                "is_high_risk": hasattr(tool, 'name') and tool.name in settings.HIGH_RISK_TOOLS
+                "type": "base_tool"
             })
 
         for tool in self.mcp_tools:
             tools_info.append({
                 "name": getattr(tool, 'name', str(tool)),
                 "description": getattr(tool, 'description', 'No description'),
-                "type": "mcp_tool",
-                "is_high_risk": hasattr(tool, 'name') and tool.name in settings.HIGH_RISK_TOOLS
+                "type": "mcp_tool"
             })
 
         return tools_info
