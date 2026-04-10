@@ -174,7 +174,7 @@ class FileReadTool(BaseTool):
             # 读取文件
             with open(resolved_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                logger.debug(f"成功读取文件: {resolved_path}, 大小: {len(content)} 字符")
+                logger.info(f"成功读取文件: {resolved_path}, 大小: {len(content)} 字符")
                 return content
 
         except UnicodeDecodeError as e:

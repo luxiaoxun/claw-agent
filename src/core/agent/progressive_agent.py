@@ -5,6 +5,7 @@ from langchain.chat_models import init_chat_model, BaseChatModel
 from core.skill_loader import SkillLoader
 from core.tools.file_read_tool import FileReadTool
 from core.tools.es_search_data_tool import SearchDataTool
+from core.tools.script_execute_tool import ScriptExecuteTool
 from core.tools.mcp_client import MCPClientManager
 from config.settings import settings
 from config.logging_config import get_logger
@@ -25,7 +26,8 @@ class ProgressiveAgent:
         # 基础工具（始终可用）
         self.file_read_tool = FileReadTool(skills_dir)
         self.search_tool = SearchDataTool()
-        self.base_tools = [self.file_read_tool, self.search_tool]
+        self.script_execute_tool = ScriptExecuteTool()
+        self.base_tools = [self.file_read_tool, self.script_execute_tool, self.search_tool]
 
         # MCP相关
         self.mcp_manager: Optional[MCPClientManager] = None
