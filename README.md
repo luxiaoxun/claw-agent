@@ -4,8 +4,9 @@
 
 ## 功能特性
 
-- 数据查询：通过自然语言查询Elasticsearch
 - 告警解读：通过AI解读分析告警日志
+- 数据查询：通过自然语言查询Elasticsearch
+- 报告生成：通过Skill生成报告
 
 ## 快速开始
 
@@ -30,4 +31,4 @@ cp .env.example .env
 # 编辑.env文件，填入你的配置
 
 # 运行项目
-uv run python src/app.py
+uv run python app/main.py
