@@ -43,12 +43,11 @@ def setup_logging():
 
     # 添加文件处理器 - 每天0点回滚，保留30天
     logger.add(
-        os.path.join(log_dir, "app.log"),
+        os.path.join(log_dir, "app.{time:YYYY-MM-DD}.log"),
         rotation="00:00",  # 每天0点回滚
         retention=30,  # 保留30天
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
         level="INFO",
-        compression=None,  # 不压缩，保持原始格式
         encoding="utf-8"
     )
 
