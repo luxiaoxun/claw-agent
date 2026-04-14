@@ -12,12 +12,13 @@ def get_work_dir():
         return os.path.dirname(sys.executable)
     else:
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        workspace_dir = os.path.dirname(os.path.dirname(current_dir))
-        return workspace_dir
+        work_dir = os.path.dirname(os.path.dirname(current_dir))
+        return work_dir
 
 
-# 设置工作目录（项目根目录）
+# 根目录和工作目录
 WORK_DIR = get_work_dir()
+WORKSPACE_DIR = os.path.join(WORK_DIR, "workspace")
 
 # 加载 .env 文件（从工作目录加载）
 env_path = os.path.join(WORK_DIR, '.env')

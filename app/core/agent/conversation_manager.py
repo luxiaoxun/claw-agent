@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 
 from core.agent.deep_agent import DeepAgent
-from config.settings import settings, WORK_DIR
+from config.settings import settings, WORKSPACE_DIR
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -26,8 +26,7 @@ class ConversationManager:
         """初始化对话管理器"""
         try:
             import os
-            workspace_dir = os.path.join(WORK_DIR, 'workspace')
-            self.deep_agent = DeepAgent(workspace_dir)
+            self.deep_agent = DeepAgent(WORKSPACE_DIR)
             await self.deep_agent.initialize()
             logger.info(f"ConversationManager初始化完成，模式: {self.deep_agent.get_mode()}")
             return self

@@ -4,10 +4,10 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
 from core.skill.skill_loader import SkillLoader
-from core.tool.file_read import FileReadTool
-from core.tool.search_data import SearchDataTool
-from core.tool.command_execute import CommandExecuteTool
-from core.tool.file_write import FileWriteTool
+from core.tool.file_read import file_read
+from core.tool.search_data import search_data
+from core.tool.command_execute import command_execute
+from core.tool.file_write import file_write
 from core.tool.mcp.mcp_client import MCPClientManager
 from config.settings import settings
 from config.logging_config import get_logger
@@ -25,11 +25,7 @@ class DeepAgent:
         self.skill_loader.load_all_skills()
 
         # 基础工具（始终可用）
-        self.file_read_tool = FileReadTool(workspace_dir)
-        self.file_write_tool = FileWriteTool(workspace_dir)
-        self.search_tool = SearchDataTool()
-        self.command_execute_tool = CommandExecuteTool()
-        self.base_tools = [self.file_read_tool, self.file_write_tool, self.command_execute_tool, self.search_tool]
+        self.base_tools = [file_read, file_write, command_execute, search_data]
 
         # MCP相关
         self.mcp_manager: Optional[MCPClientManager] = None

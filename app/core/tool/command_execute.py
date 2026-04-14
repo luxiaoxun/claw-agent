@@ -1,10 +1,10 @@
 import os.path
-from typing import Optional, Type, Dict, Any, List
-from langchain.tools import BaseTool
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, Dict, Any, List
+from langchain.tools import tool
+from pydantic import BaseModel, Field
 
-from config import WORK_DIR
 from config.logging_config import get_logger
+from config.settings import WORKSPACE_DIR
 from utils.command_executor import execute_local_command, DEFAULT_COMMAND_TIMEOUT
 
 logger = get_logger(__name__)
@@ -28,20 +28,14 @@ class CommandExecuteInput(BaseModel):
     )
 
 
-class CommandExecuteTool(BaseTool):
+@tool("command_execute", args_schema=CommandExecuteInput)
+def command_execute(
+        command: str,
+        working_dir: Optional[str] = None,
+        timeout: int = 30,
+        args: Optional[str] = None
+) -> str:
     """
-    Command execution tool
-    Agent executes various types of commands (Python, Shell, Node.js, etc.) through this tool
-    The command parameter directly contains the complete command and interpreter information
-
-    Supports multiple command types:
-    1. Python command: python script.py or python3 script.py
-    2. Shell command: bash script.sh or sh script.sh
-    3. Node.js/JavaScript command: node script.js
-    """
-
-    name: str = "command_execute"
-    description: str = """
     Execute command code or command files. The command parameter needs to contain the complete command and interpreter information.
 
     Usage examples:
@@ -56,112 +50,79 @@ class CommandExecuteTool(BaseTool):
     - Output will be truncated to prevent oversized output (default 100000 characters)
     - Working directory can be specified, default uses current directory
     """
-    args_schema: Type[BaseModel] = CommandExecuteInput
+    # Execute command with same logic as original _run method
+    try:
+        # Log execution information
+        logger.info(f"Execute command: {command}, args: {args}")
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+        # Handle working directory
+        if working_dir:
+            logger.info(f"Working directory: {working_dir}")
+        else:
+            working_dir = os.path.join(WORKSPACE_DIR, "skills")
+            logger.info(f"Working directory: {working_dir}")
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        if timeout != DEFAULT_COMMAND_TIMEOUT:
+            logger.info(f"Timeout: {timeout} seconds")
 
-    def _execute_command(
-            self,
-            command: str,
-            working_dir: Optional[str] = None,
-            timeout: int = 30,
-            args: Optional[str] = None
-    ) -> str:
-        """
-        Execute command
+        # Execute command using helper function
+        result = _execute_command_helper(
+            command=command,
+            working_dir=working_dir,
+            timeout=timeout,
+            args=args
+        )
 
-        Args:
-            command: Complete command (including interpreter)
-            working_dir: Working directory
-            timeout: Timeout duration
-            args: Command line arguments
+        return result
 
-        Returns:
-            Execution result
-        """
-        try:
-            # Build complete command
-            full_command = command
-            if args:
-                full_command = f"{command} {args}"
+    except Exception as e:
+        logger.error(f"Command execution failed: {e}", exc_info=True)
+        return f"Command execution failed: {str(e)}"
 
-            # Execute command
-            logger.info(f"Execute command: {full_command}, cwd: {working_dir}, timeout: {timeout}")
-            result = execute_local_command(
-                command=full_command,
-                cwd=working_dir,
-                timeout=timeout
-            )
 
-            # Format output
-            output = result.output
-            if result.exit_code != 0:
-                logger.info(f"Execute command failed: {full_command}\n{output}")
-                output = f"Command execution failed (exit_code: {result.exit_code})\n{output}"
+def _execute_command_helper(
+        command: str,
+        working_dir: Optional[str] = None,
+        timeout: int = 30,
+        args: Optional[str] = None
+) -> str:
+    """
+    Helper function to execute command (extracted from original _execute_command method)
 
-            if result.truncated:
-                output += "\n\nWarning: command execution result is truncated (exceeds the size limit)"
+    Args:
+        command: Complete command (including interpreter)
+        working_dir: Working directory
+        timeout: Timeout duration
+        args: Command line arguments
 
-            return output
+    Returns:
+        Execution result
+    """
+    try:
+        # Build complete command
+        full_command = command
+        if args:
+            full_command = f"{command} {args}"
 
-        except Exception as e:
-            logger.error(f"Execute command error: {e}", exc_info=True)
-            return f"Error: execute command failed - {str(e)}"
+        # Execute command
+        logger.info(f"Execute command: {full_command}, cwd: {working_dir}, timeout: {timeout}")
+        result = execute_local_command(
+            command=full_command,
+            cwd=working_dir,
+            timeout=timeout
+        )
 
-    def _run(
-            self,
-            command: str,
-            working_dir: Optional[str] = None,
-            timeout: int = 30,
-            args: Optional[str] = None
-    ) -> str:
-        """
-        Synchronously execute command
+        # Format output
+        output = result.output
+        if result.exit_code != 0:
+            logger.info(f"Execute command failed: {full_command}\n{output}")
+            output = f"Command execution failed (exit_code: {result.exit_code})\n{output}"
 
-        Args:
-            command: Complete command (including interpreter)
-            working_dir: Working directory
-            timeout: Timeout duration
-            args: Command line arguments
+        if result.truncated:
+            output += "\n\nWarning: command execution result is truncated (exceeds the size limit)"
 
-        Returns:
-            Execution result
-        """
-        try:
-            # Log execution information
-            logger.info(f"Execute command: {command}, args: {args}")
-            if working_dir:
-                logger.info(f"Working directory: {working_dir}")
-            else:
-                working_dir = os.path.join(WORK_DIR, "workspace/skills")
-                logger.info(f"Working directory: {working_dir}")
-            if timeout != DEFAULT_COMMAND_TIMEOUT:
-                logger.info(f"Timeout: {timeout} seconds")
+        return output
 
-            # Execute command
-            result = self._execute_command(
-                command=command,
-                working_dir=working_dir,
-                timeout=timeout,
-                args=args
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Command execution failed: {e}", exc_info=True)
-            return f"Command execution failed: {str(e)}"
-
-    async def _arun(
-            self,
-            command: str,
-            working_dir: Optional[str] = None,
-            timeout: int = 30,
-            args: Optional[str] = None
-    ) -> str:
-        """Asynchronously execute command"""
-        # Currently using synchronous implementation because execute_local_command is synchronous
-        return self._run(command, working_dir, timeout, args)
+    except Exception as e:
+        logger.error(f"Execute command error: {e}", exc_info=True)
+        return f"Error: execute command failed - {str(e)}"
