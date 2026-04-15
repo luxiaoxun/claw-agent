@@ -28,7 +28,7 @@ class ConversationManager:
             import os
             self.deep_agent = DeepAgent(WORKSPACE_DIR)
             await self.deep_agent.initialize()
-            logger.info(f"ConversationManager初始化完成，模式: {self.deep_agent.get_mode()}")
+            logger.info(f"ConversationManager初始化完成")
             return self
         except Exception as e:
             logger.error(f"ConversationManager初始化失败: {str(e)}")
@@ -46,7 +46,7 @@ class ConversationManager:
             result = await self.deep_agent.process(
                 message,
                 chat_history=self.conversation_history[
-                             -settings.MAX_HISTORY_LENGTH:] if self.conversation_history else None
+                             -settings.MSG_MAX_HISTORY_LENGTH:] if self.conversation_history else None
             )
 
             # 提取响应文本并更新历史
@@ -110,49 +110,58 @@ class ConversationManager:
             self._current_stream_response = ""
             self._streaming_tool_calls = []
 
+            chunk_count = 0
             # 调用 Agent 的流式处理
             async for chunk in self.deep_agent.stream_process(
                     message,
                     chat_history=self.conversation_history[
-                                 -settings.MAX_HISTORY_LENGTH:] if self.conversation_history else None
+                                 -settings.MSG_MAX_HISTORY_LENGTH:] if self.conversation_history else None
             ):
-                # 解析 chunk
-                for chunk_type, chunk_data in self._parse_stream_chunk(chunk):
+                chunk_count += 1
+
+                # 直接处理 chunk
+                if isinstance(chunk, dict):
+                    chunk_type = chunk.get("type")
+
                     if chunk_type == "tool_call":
-                        # 发送工具调用信息
+                        logger.info(f"处理工具调用: {chunk.get('tool_name')}")
                         yield {
                             "type": "tool_call",
-                            "tool_name": chunk_data.get("tool_name"),
-                            "tool_args": chunk_data.get("tool_args")
+                            "tool_name": chunk.get("tool_name"),
+                            "tool_args": chunk.get("tool_args")
                         }
-
                     elif chunk_type == "tool_result":
-                        # 发送工具结果
+                        logger.info(f"处理工具结果: {chunk.get('tool_name')}")
                         yield {
                             "type": "tool_result",
-                            "tool_name": chunk_data.get("tool_name"),
-                            "result": chunk_data.get("result"),
-                            "status": chunk_data.get("status", "success")
+                            "tool_name": chunk.get("tool_name"),
+                            "result": chunk.get("result"),
+                            "status": chunk.get("status", "success")
                         }
-
                     elif chunk_type == "content":
-                        # 累积响应
-                        self._current_stream_response += chunk_data
-                        yield {
-                            "type": "content",
-                            "content": chunk_data
-                        }
-
+                        content_chunk = chunk.get("content", "")
+                        if content_chunk:
+                            self._current_stream_response += content_chunk
+                            logger.debug(f"处理内容块: {content_chunk[:50]}...")
+                            yield {
+                                "type": "content",
+                                "content": content_chunk
+                            }
                     elif chunk_type == "error":
+                        logger.error(f"处理错误: {chunk.get('error')}")
                         yield {
                             "type": "error",
-                            "content": chunk_data
+                            "content": chunk.get("error", "未知错误")
                         }
+                    else:
+                        logger.warning(f"未知的 chunk 类型: {chunk_type}")
+                else:
+                    logger.warning(f"非字典类型的 chunk: {type(chunk)} - {chunk}")
+
+            logger.info(f"流式处理完成，共收到 {chunk_count} 个 chunks，总响应长度: {len(self._current_stream_response)}")
 
             # 流式处理完成后，更新对话历史
             if self._current_stream_response:
-                # 注意：这里简化了历史更新，实际可能需要从流式数据中重建完整消息
-                # 对于流式响应，我们可以只保存最终的响应文本
                 self.conversation_history.append(HumanMessage(content=message))
                 self.conversation_history.append(AIMessage(content=self._current_stream_response))
 
@@ -172,74 +181,6 @@ class ConversationManager:
             yield {
                 "type": "error",
                 "content": f"处理消息时出错: {str(e)}"
-            }
-
-    def _parse_stream_chunk(self, chunk):
-        """
-        解析 Agent 流式输出的 chunk
-        返回: (type, data) 元组
-        """
-        # 处理错误信息
-        if isinstance(chunk, dict) and chunk.get("type") == "error":
-            yield "error", chunk.get("error", "未知错误")
-            return
-
-        # 处理字典类型的 chunk
-        if isinstance(chunk, dict):
-            # 检查是否有 messages 字段
-            if "messages" in chunk:
-                messages = chunk["messages"]
-                if messages:
-                    last_message = messages[-1]
-
-                    # AI 消息
-                    if hasattr(last_message, "type") and last_message.type == "ai":
-                        # 检查是否有工具调用
-                        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                            for tool_call in last_message.tool_calls:
-                                yield "tool_call", {
-                                    "tool_name": tool_call.get("name"),
-                                    "tool_args": tool_call.get("args", {})
-                                }
-
-                        # 内容流
-                        if hasattr(last_message, "content") and last_message.content:
-                            yield "content", last_message.content
-
-                    # 工具消息
-                    elif hasattr(last_message, "type") and last_message.type == "tool":
-                        yield "tool_result", {
-                            "tool_name": getattr(last_message, "name", "unknown"),
-                            "result": last_message.content,
-                            "status": "success"
-                        }
-
-            # 直接的 chunk 内容
-            elif "content" in chunk:
-                yield "content", chunk["content"]
-
-        # 字符串类型的 chunk
-        elif isinstance(chunk, str):
-            yield "content", chunk
-
-        # 检查是否是 AIMessageChunk
-        elif hasattr(chunk, "content") and chunk.content:
-            yield "content", chunk.content
-
-        # 检查工具调用
-        elif hasattr(chunk, "tool_calls") and chunk.tool_calls:
-            for tool_call in chunk.tool_calls:
-                yield "tool_call", {
-                    "tool_name": tool_call.get("name"),
-                    "tool_args": tool_call.get("args", {})
-                }
-
-        # 检查是否是 ToolMessage
-        elif hasattr(chunk, "type") and chunk.type == "tool":
-            yield "tool_result", {
-                "tool_name": getattr(chunk, "name", "unknown"),
-                "result": chunk.content if hasattr(chunk, "content") else str(chunk),
-                "status": "success"
             }
 
     def reset_history(self):
@@ -263,16 +204,3 @@ class ConversationManager:
         if not self.deep_agent:
             return []
         return self.deep_agent.get_tools_info()
-
-    def get_agent_mode(self) -> str:
-        """获取当前Agent模式"""
-        if not self.deep_agent:
-            return "uninitialized"
-        return self.deep_agent.get_mode()
-
-    def get_conversation_summary(self) -> Dict[str, Any]:
-        """获取对话摘要信息"""
-        return {
-            "total_messages": len(self.conversation_history),
-            "agent_mode": self.get_agent_mode()
-        }

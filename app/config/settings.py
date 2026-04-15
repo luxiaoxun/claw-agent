@@ -55,8 +55,9 @@ class Settings(BaseSettings):
     ES_MAX_RESULTS: int = int(os.getenv("ES_MAX_RESULTS", "100"))
 
     # Agent配置
-    MAX_ITERATIONS: int = 10
-    MAX_HISTORY_LENGTH: int = 10
+    AGENT_MAX_ITERATIONS: int = 10
+    MSG_MAX_HISTORY_LENGTH: int = 10
+    MSG_TOOL_OUTPUT_ENABLED: bool = os.getenv("MSG_TOOL_OUTPUT_ENABLED", "false").lower() == "true"
 
     # 安全配置
     HIGH_RISK_TOOLS: List[str] = ["block_ips"]

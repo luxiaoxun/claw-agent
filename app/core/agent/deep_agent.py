@@ -1,7 +1,7 @@
 import os
 from typing import Dict, Any, List, Optional
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
 from core.skill.skill_loader import SkillLoader
 from core.tool.file_read import file_read
@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 class DeepAgent:
     """
-    渐进式ReAct Agent
+    ReAct Agent
     """
 
     def __init__(self, workspace_dir):
@@ -51,7 +51,7 @@ class DeepAgent:
             all_tools = self.base_tools + self.mcp_tools
             self._create_agent(all_tools)
 
-            logger.info(f"Agent初始化完成，模式: {self.get_mode()}, 工具数: {len(all_tools)}")
+            logger.info(f"Agent初始化完成，工具数: {len(all_tools)}")
             return self
 
         except Exception as e:
@@ -103,40 +103,39 @@ class DeepAgent:
 
         prompt = f"""你是一个智能助手，能够处理各种数据查询和分析任务。
 
-## 可用技能列表
+    ## 工作流程
 
-以下是所有可用的技能，每个技能都有特定的用途：
+    **重要：你需要按照以下步骤工作：**
 
-"""
+    ### 第一步：选择技能
+    分析用户的问题，判断应该使用哪个技能来处理。你需要从下面的技能列表中选择最合适的技能。如果找不到合适的技能或工具，就基于内置知识和对用户提供内容的理解进行回答，不可以随便瞎编答案。
+
+    ### 第二步：加载技能
+    使用 `file_read` 工具读取选中技能的 SKILL.md 文件。
+    - 格式: `{{"path": "SKILL.md", "skill_name": "技能名称"}}`
+
+    ### 第三步：执行任务
+    技能文件会告诉你：
+    - 这个技能的具体作用
+    - 如何使用（是否需要调用工具）
+    - 返回结果的格式要求
+
+    ### 第四步：返回结果
+    严格按照技能文件中定义的输出格式返回结果。
+
+    ## 注意事项
+    - **必须**先加载技能文件，再执行任务
+    - 技能文件中的指令优先级最高
+    - 严格按照技能文件要求的格式返回结果
+
+    ## 可用技能列表
+
+    以下是所有可用的技能，每个技能都有特定的用途：
+
+    """
         for skill in all_skills:
             prompt += f"- **{skill['name']}**: {skill['description']}\n"
 
-        prompt += """
-## 工作流程
-
-**重要：你需要按照以下步骤工作：**
-
-### 第一步：选择技能
-分析用户的问题，判断应该使用哪个技能来处理。你需要从上面的技能列表中选择最合适的技能。如果找不到合适的技能或工具，就基于内置知识和对用户提供内容的理解进行回答，不可以随便瞎编答案。
-
-### 第二步：加载技能
-使用 `file_read` 工具读取选中技能的 SKILL.md 文件。
-- 格式: `{"path": "SKILL.md", "skill_name": "技能名称"}`
-
-### 第三步：执行任务
-技能文件会告诉你：
-- 这个技能的具体作用
-- 如何使用（是否需要调用工具）
-- 返回结果的格式要求
-
-### 第四步：返回结果
-严格按照技能文件中定义的输出格式返回结果。
-
-## 注意事项
-- **必须**先加载技能文件，再执行任务
-- 技能文件中的指令优先级最高
-- 严格按照技能文件要求的格式返回结果
-"""
         self.system_prompt = prompt
 
     async def process(self, message: str, chat_history: Optional[List[BaseMessage]] = None) -> Dict[str, Any]:
@@ -180,7 +179,8 @@ class DeepAgent:
         messages = chat_history + [HumanMessage(content=message)]
 
         try:
-            # 使用 astream_events 获取更详细的流式事件
+            logger.info("开始流式处理")
+
             async for event in self.agent.astream_events(
                     {"messages": messages},
                     version="v2"
@@ -189,50 +189,67 @@ class DeepAgent:
 
                 # 处理工具调用开始
                 if event_type == "on_tool_start":
-                    yield {
-                        "type": "tool_call",
-                        "tool_name": event.get("name"),
-                        "tool_args": event.get("data", {}).get("input", {}),
-                        "run_id": event.get("run_id")
-                    }
+                    tool_name = event.get("name", "unknown")
+                    tool_input = event.get("data", {}).get("input", {})
+                    logger.info(f"工具调用开始: {tool_name}")
+
+                    # 根据配置决定是否输出工具调用信息
+                    if settings.MSG_TOOL_OUTPUT_ENABLED:
+                        yield {
+                            "type": "tool_call",
+                            "tool_name": tool_name,
+                            "tool_args": tool_input
+                        }
 
                 # 处理工具调用结束
                 elif event_type == "on_tool_end":
-                    yield {
-                        "type": "tool_result",
-                        "tool_name": event.get("name"),
-                        "result": event.get("data", {}).get("output"),
-                        "status": "success"
-                    }
+                    tool_name = event.get("name", "unknown")
+                    tool_output = event.get("data", {}).get("output")
+                    logger.info(f"工具调用结束: {tool_name}")
+
+                    # 根据配置决定是否输出工具结果信息
+                    if settings.MSG_TOOL_OUTPUT_ENABLED:
+                        yield {
+                            "type": "tool_result",
+                            "tool_name": tool_name,
+                            "result": str(tool_output) if tool_output else "无输出",
+                            "status": "success"
+                        }
 
                 # 处理工具错误
                 elif event_type == "on_tool_error":
-                    yield {
-                        "type": "tool_result",
-                        "tool_name": event.get("name"),
-                        "result": str(event.get("data", {}).get("error", "未知错误")),
-                        "status": "error"
-                    }
+                    tool_name = event.get("name", "unknown")
+                    error = event.get("data", {}).get("error", "未知错误")
+                    logger.error(f"工具调用错误: {tool_name} - {error}")
 
-                # 处理 LLM 流式输出
-                elif event_type == "on_chat_model_stream":
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
+                    # 根据配置决定是否输出工具错误信息
+                    if settings.MSG_TOOL_OUTPUT_ENABLED:
                         yield {
-                            "type": "content",
-                            "content": chunk.content
+                            "type": "tool_result",
+                            "tool_name": tool_name,
+                            "result": str(error),
+                            "status": "error"
                         }
 
-                # 处理 LLM 结束（可能包含工具调用）
-                elif event_type == "on_chat_model_end":
-                    output = event.get("data", {}).get("output")
-                    if output and hasattr(output, "tool_calls") and output.tool_calls:
-                        for tool_call in output.tool_calls:
+                # 处理 LLM 流式输出（内容）- 始终输出，不受配置控制
+                elif event_type == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk:
+                        # 获取内容
+                        content = None
+                        if hasattr(chunk, "content") and chunk.content:
+                            content = chunk.content
+                        elif isinstance(chunk, dict) and "content" in chunk:
+                            content = chunk["content"]
+
+                        if content:
+                            logger.debug(f"LLM 输出块: {content[:50]}...")
                             yield {
-                                "type": "tool_call",
-                                "tool_name": tool_call.get("name"),
-                                "tool_args": tool_call.get("args", {})
+                                "type": "content",
+                                "content": content
                             }
+
+            logger.info("流式处理完成")
 
         except Exception as e:
             logger.error(f"流式处理失败: {str(e)}", exc_info=True)
@@ -240,37 +257,6 @@ class DeepAgent:
                 "type": "error",
                 "error": str(e)
             }
-
-    def get_tool_calls_from_result(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        从结果中提取所有工具调用信息
-        """
-        tool_calls = []
-        messages = result.get("messages", [])
-
-        for msg in messages:
-            # AI 消息中的工具调用请求
-            if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls'):
-                for tc in msg.tool_calls:
-                    tool_calls.append({
-                        "type": "request",
-                        "id": tc.get('id'),
-                        "name": tc.get('name'),
-                        "args": tc.get('args', {}),
-                        "timestamp": getattr(msg, 'timestamp', None)
-                    })
-
-            # 工具执行结果
-            if isinstance(msg, ToolMessage):
-                tool_calls.append({
-                    "type": "result",
-                    "id": getattr(msg, 'tool_call_id', None),
-                    "name": getattr(msg, 'name', 'unknown'),
-                    "content": msg.content,
-                    "timestamp": getattr(msg, 'timestamp', None)
-                })
-
-        return tool_calls
 
     async def close(self):
         """关闭连接"""
@@ -297,12 +283,3 @@ class DeepAgent:
             })
 
         return tools_info
-
-    def get_mode(self) -> str:
-        """获取当前模式"""
-        if self.use_mcp and self.mcp_tools:
-            return "progressive_with_mcp"
-        elif self.use_mcp:
-            return "progressive_mcp_failed"
-        else:
-            return "progressive_local"
