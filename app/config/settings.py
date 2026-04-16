@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # Agent配置
     AGENT_MAX_ITERATIONS: int = 10
     MSG_MAX_HISTORY_LENGTH: int = 10
-    MSG_TOOL_OUTPUT_ENABLED: bool = os.getenv("MSG_TOOL_OUTPUT_ENABLED", "false").lower() == "true"
+    MSG_TOOL_OUTPUT_ENABLED: bool = os.getenv("MSG_TOOL_OUTPUT_ENABLED", "true").lower() == "true"
 
     # 安全配置
     HIGH_RISK_TOOLS: List[str] = ["block_ips"]

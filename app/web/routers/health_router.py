@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from core.models.responses import HealthResponse
+from core.model.response_model import HealthResponse
 from web.dependencies import get_conversation_manager
 from config.settings import settings
 from config.logging_config import get_logger

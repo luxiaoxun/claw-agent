@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from core.models.responses import ToolsResponse, ToolInfo
+from core.model.response_model import ToolsResponse, ToolInfo
 from web.dependencies import get_conversation_manager
 from config.logging_config import get_logger
 

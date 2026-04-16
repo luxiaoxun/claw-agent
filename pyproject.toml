@@ -21,6 +21,7 @@ dependencies = [
     # MCP
     "mcp==1.20.0",
     # Database
+    "sqlalchemy==2.0.44",
     "elasticsearch==7.16.2",
     # HTTP & Networking
     "httpx==0.28.1",

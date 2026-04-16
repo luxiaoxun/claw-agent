@@ -2,7 +2,7 @@ import json
 import uuid
 from fastapi import APIRouter, Request, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from core.models.chat import ChatRequest, ChatResponse
+from core.model.chat_model import ChatRequest, ChatResponse
 from config.logging_config import get_logger
 from web.dependencies import get_conversation_manager
 import traceback
@@ -26,6 +26,7 @@ async def chat(
         conversation_id = data.get('conversation_id')
         if conversation_id is None:
             conversation_id = str(uuid.uuid4())
+        conversation_manager.set_conversation_id(conversation_id)
 
         # 验证请求
         try:
@@ -69,16 +70,46 @@ async def chat(
 
 @router.post("/reset")
 async def reset(
+        request: Request,
         conversation_manager=Depends(get_conversation_manager)
 ):
-    """重置对话历史"""
+    """
+    重置当前会话的对话历史
+    仅重置内存中的历史记录，不删除数据库中的持久化数据
+    """
     try:
-        conversation_manager.reset_history()
-        logger.info("对话历史已重置")
-        return {"status": "对话历史已重置"}
+        # 获取请求体中的 conversation_id（可选）
+        body = await request.json() if await request.body() else {}
+        conversation_id = body.get('conversation_id')
+
+        # 如果请求中提供了 conversation_id，确保使用正确的管理器
+        if conversation_id and conversation_manager.conversation_id != conversation_id:
+            # 重新初始化管理器以使用正确的会话ID
+            await conversation_manager.initialize(conversation_id=conversation_id)
+
+        # 重置历史记录
+        await conversation_manager.reset_history()
+
+        logger.info(f"对话历史已重置, conversation_id: {conversation_manager.conversation_id}")
+
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": "对话历史已重置",
+                "conversation_id": conversation_manager.conversation_id
+            },
+            status_code=200
+        )
+
     except Exception as e:
         logger.error(f"重置对话历史时出错: {str(e)}")
-        return JSONResponse({"error": f"内部错误: {str(e)}"}, status_code=500)
+        traceback.print_exc()
+        return JSONResponse(
+            content={
+                "error": f"重置失败: {str(e)}"
+            },
+            status_code=500
+        )
 
 
 @router.websocket("/ws/message")
@@ -90,8 +121,7 @@ async def websocket_chat(
 
     # 连接并获取客户端ID
     client_id = await ws_connection_manager.connect(websocket)
-
-    conversation_id = None
+    conversation_manager = None
 
     try:
         await websocket.send_json({
@@ -110,16 +140,6 @@ async def websocket_chat(
                 user_message = message_data.get('message', '')
                 conversation_id = message_data.get('conversation_id')
 
-                # 获取该客户端的会话管理器
-                conversation_manager = ws_connection_manager.get_manager(client_id)
-
-                if not conversation_manager:
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "会话管理器未找到"
-                    })
-                    continue
-
                 if not user_message:
                     await websocket.send_json({
                         "type": "error",
@@ -127,15 +147,32 @@ async def websocket_chat(
                     })
                     continue
 
-                # 生成或使用现有的会话ID
-                if not conversation_id:
-                    conversation_id = str(uuid.uuid4())
+                # 如果还没有会话管理器，进行初始化
+                if not conversation_manager:
+                    conversation_manager = await ws_connection_manager.initialize_manager(
+                        client_id=client_id,
+                        conversation_id=conversation_id
+                    )
+                elif conversation_id and conversation_id != ws_connection_manager.get_conversation_id(client_id):
+                    # 如果会话ID发生变化，更新管理器的会话ID
+                    await ws_connection_manager.update_conversation_id(client_id, conversation_id)
+                    conversation_manager = ws_connection_manager.get_manager(client_id)
+
+                # 确保有会话ID（如果还是没有，生成一个新的）
+                if not conversation_manager.conversation_id:
+                    import uuid
+                    new_conversation_id = str(uuid.uuid4())
+                    await ws_connection_manager.update_conversation_id(client_id, new_conversation_id)
+                    conversation_manager = ws_connection_manager.get_manager(client_id)
+
+                    # 发送会话ID给前端
                     await websocket.send_json({
                         "type": "session",
-                        "conversation_id": conversation_id
+                        "conversation_id": new_conversation_id
                     })
 
-                logger.info(f"WebSocket 处理消息: {user_message}, conversation_id: {conversation_id}")
+                logger.info(
+                    f"WebSocket 处理消息: {user_message[:100]}..., conversation_id: {conversation_manager.conversation_id}")
 
                 # 流式处理消息
                 full_response = ""
@@ -145,7 +182,6 @@ async def websocket_chat(
                     chunk_type = chunk.get("type", "unknown")
 
                     if chunk_type == "tool_call":
-                        # 工具调用开始
                         has_tool_calls = True
                         await websocket.send_json({
                             "type": "tool_call",
@@ -155,7 +191,6 @@ async def websocket_chat(
                         })
 
                     elif chunk_type == "tool_result":
-                        # 工具执行结果
                         await websocket.send_json({
                             "type": "tool_result",
                             "tool_name": chunk.get("tool_name"),
@@ -164,17 +199,15 @@ async def websocket_chat(
                         })
 
                     elif chunk_type == "content":
-                        # 流式内容
                         content_chunk = chunk.get("content", "")
                         full_response += content_chunk
                         await websocket.send_json({
                             "type": "chunk",
                             "content": content_chunk,
-                            "conversation_id": conversation_id
+                            "conversation_id": conversation_manager.conversation_id
                         })
 
                     elif chunk_type == "error":
-                        # 错误消息
                         await websocket.send_json({
                             "type": "error",
                             "error": chunk.get("content", "未知错误")
@@ -186,9 +219,11 @@ async def websocket_chat(
                     await websocket.send_json({
                         "type": "complete",
                         "full_response": full_response,
-                        "conversation_id": conversation_id,
+                        "conversation_id": conversation_manager.conversation_id,
                         "has_tool_calls": has_tool_calls
                     })
+
+                logger.info(f"消息处理完成，响应长度: {len(full_response)}")
 
             except json.JSONDecodeError:
                 await websocket.send_json({
@@ -204,7 +239,9 @@ async def websocket_chat(
                 })
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket 连接断开, conversation_id: {conversation_id}")
+        logger.info(f"WebSocket 连接断开, client_id: {client_id}")
+        await ws_connection_manager.disconnect_and_cleanup(client_id)
     except Exception as e:
         logger.error(f"WebSocket 连接异常: {str(e)}")
         traceback.print_exc()
+        await ws_connection_manager.disconnect_and_cleanup(client_id)

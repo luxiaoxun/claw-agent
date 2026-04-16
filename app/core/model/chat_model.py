@@ -1,25 +1,5 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
-from datetime import datetime
-
-
-@dataclass
-class ChatMessage:
-    """聊天消息模型"""
-    role: str
-    content: str
-    timestamp: Optional[str] = None
-
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = datetime.now().isoformat()
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "role": self.role,
-            "content": self.content,
-            "timestamp": self.timestamp
-        }
 
 
 @dataclass

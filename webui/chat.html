@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI 聊天测试</title>
+    <title>AI Agent测试</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -42,6 +42,10 @@
         .assistant {
             color: #000000;
         }
+        .warning {
+            color: #ff9900;
+            font-style: italic;
+        }
         .input-area {
             margin-top: 20px;
             display: flex;
@@ -56,6 +60,25 @@
             padding: 10px 20px;
             font-size: 14px;
             cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            opacity: 0.8;
+        }
+        #resetBtn {
+            background-color: #ff9800;
+            color: white;
+            border: none;
+        }
+        #newBtn {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+        }
+        #sendBtn {
+            background-color: #2196f3;
+            color: white;
+            border: none;
         }
         .status {
             margin-top: 10px;
@@ -63,15 +86,25 @@
             font-size: 12px;
             color: #666;
         }
+        .status.connected {
+            color: #4caf50;
+        }
+        .status.disconnected {
+            color: #f44336;
+        }
+        .status.processing {
+            color: #ff9800;
+        }
     </style>
 </head>
 <body>
-    <h2>AI 聊天测试</h2>
+    <h2>AI Agent测试</h2>
     <div id="output"></div>
     <div class="input-area">
         <input type="text" id="message" placeholder="输入消息...">
-        <button onclick="sendMessage()">发送</button>
-        <button onclick="resetConversation()">重置对话</button>
+        <button id="sendBtn" onclick="sendMessage()">发送</button>
+        <button id="resetBtn" onclick="resetConversation()">重置对话</button>
+        <button id="newBtn" onclick="newConversation()">新建会话</button>
     </div>
     <div class="status" id="status">状态: 连接中...</div>
 
@@ -80,100 +113,204 @@
         let conversationId = null;
         let currentResponseDiv = null;
         let currentResponseContent = "";
+        let isResetting = false;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        // API 基础 URL
+        const API_BASE_URL = "http://localhost:5000/api";
+
+        // 保存会话ID到localStorage
+        function saveConversationId(id) {
+            if (id) {
+                localStorage.setItem('last_conversation_id', id);
+                conversationId = id;
+                console.log(`会话ID已保存: ${id}`);
+            }
+        }
+
+        // 加载保存的会话ID
+        function loadSavedConversationId() {
+            const savedId = localStorage.getItem('last_conversation_id');
+            if (savedId) {
+                conversationId = savedId;
+                addMessage("系统", `恢复上次会话: ${savedId.substring(0, 8)}...`, "system");
+                return true;
+            }
+            return false;
+        }
+
+        // 调用后端重置API
+        async function callResetAPI() {
+            if (isResetting) {
+                addMessage("系统", "正在重置中，请稍后再试...", "warning");
+                return false;
+            }
+
+            isResetting = true;
+            
+            try {
+                addMessage("系统", "正在重置对话历史...", "system");
+                
+                const response = await fetch(`${API_BASE_URL}/chat/reset`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        conversation_id: conversationId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    addMessage("系统", `✓ ${data.message}`, "system");
+                    console.log(`重置成功: ${data.conversation_id}`);
+                    return true;
+                } else {
+                    addMessage("错误", `重置失败: ${data.error || '未知错误'}`, "error");
+                    return false;
+                }
+            } catch (error) {
+                console.error("重置API调用失败:", error);
+                addMessage("错误", `重置失败: ${error.message}`, "error");
+                return false;
+            } finally {
+                isResetting = false;
+            }
+        }
+
+        // 清空前端显示
+        function clearDisplay() {
+            const output = document.getElementById("output");
+            output.innerHTML = "";
+            currentResponseDiv = null;
+            currentResponseContent = "";
+            addMessage("系统", "显示区域已清空", "system");
+        }
 
         function connect() {
             const statusDiv = document.getElementById("status");
             statusDiv.textContent = "状态: 正在连接...";
+            statusDiv.className = "status";
             
-            ws = new WebSocket("ws://localhost:5000/api/chat/ws/message");
+            // 确保 WebSocket URL 正确
+            const wsUrl = "ws://localhost:5000/api/chat/ws/message";
+            console.log("尝试连接 WebSocket:", wsUrl);
             
-            ws.onopen = function() {
-                statusDiv.textContent = "状态: 已连接";
-                addMessage("系统", "WebSocket 连接已建立", "system");
-            };
-            
-            ws.onmessage = function(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    console.log("收到消息:", data);
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    console.log("WebSocket 连接已建立");
+                    statusDiv.textContent = "状态: 已连接";
+                    statusDiv.className = "status connected";
+                    addMessage("系统", "WebSocket 连接已建立", "system");
+                    reconnectAttempts = 0; // 重置重连计数
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log("收到消息:", data);
+                        
+                        switch(data.type) {
+                            case "connection":
+                                addMessage("系统", data.message || "连接成功", "system");
+                                statusDiv.textContent = `状态: 已连接 (Client: ${data.client_id ? data.client_id.substring(0, 8) : 'unknown'}...)`;
+                                statusDiv.className = "status connected";
+                                break;
+                                
+                            case "session":
+                                if (data.conversation_id) {
+                                    conversationId = data.conversation_id;
+                                    saveConversationId(conversationId);
+                                    addMessage("系统", `会话ID: ${conversationId.substring(0, 8)}...`, "system");
+                                }
+                                break;
+                                
+                            case "chunk":
+                                appendToLastMessage(data.content);
+                                break;
+                                
+                            case "tool_call":
+                                addMessage("🔧 工具调用", `${data.tool_name}`, "tool-call");
+                                if (data.tool_args && Object.keys(data.tool_args).length > 0) {
+                                    const argsStr = JSON.stringify(data.tool_args, null, 2);
+                                    const preview = argsStr.length > 200 ? argsStr.substring(0, 200) + '...' : argsStr;
+                                    addMessage("   参数", preview, "tool-call", true);
+                                }
+                                break;
+                                
+                            case "tool_result":
+                                const resultPreview = typeof data.result === 'string' 
+                                    ? data.result.substring(0, 200) 
+                                    : JSON.stringify(data.result).substring(0, 200);
+                                const statusIcon = data.status === 'error' ? '✗' : '✓';
+                                addMessage(`${statusIcon} 工具结果`, `${data.tool_name}: ${resultPreview}${resultPreview.length >= 200 ? '...' : ''}`, "tool-result");
+                                break;
+                                
+                            case "complete":
+                                addMessage("完成", "消息处理完成", "system");
+                                statusDiv.textContent = "状态: 就绪";
+                                statusDiv.className = "status connected";
+                                currentResponseDiv = null;
+                                currentResponseContent = "";
+                                break;
+                                
+                            case "error":
+                                addMessage("错误", data.error, "error");
+                                statusDiv.textContent = "状态: 错误";
+                                statusDiv.className = "status disconnected";
+                                currentResponseDiv = null;
+                                currentResponseContent = "";
+                                break;
+                                
+                            default:
+                                console.log("未知消息类型:", data);
+                        }
+                    } catch (e) {
+                        console.error("解析消息失败:", e, event.data);
+                        addMessage("错误", `解析消息失败: ${e.message}`, "error");
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    console.log("WebSocket 连接已关闭", event.code, event.reason);
+                    statusDiv.textContent = "状态: 已断开";
+                    statusDiv.className = "status disconnected";
+                    addMessage("系统", "WebSocket 连接已断开", "system");
                     
-                    switch(data.type) {
-                        case "connection":
-                            // 连接成功消息
-                            addMessage("系统", data.message || "连接成功", "system");
-                            statusDiv.textContent = `状态: 已连接 (Client: ${data.client_id})`;
-                            break;
-                            
-                        case "session":
-                            conversationId = data.conversation_id;
-                            addMessage("系统", `会话ID: ${conversationId}`, "system");
-                            break;
-                            
-                        case "chunk":
-                            // 流式内容块
-                            appendToLastMessage(data.content);
-                            break;
-                            
-                        case "tool_call":
-                            // 工具调用开始
-                            addMessage("🔧 工具调用", `${data.tool_name}`, "tool-call");
-                            if (data.tool_args && Object.keys(data.tool_args).length > 0) {
-                                addMessage("   参数", JSON.stringify(data.tool_args, null, 2), "tool-call", true);
+                    // 自动重连
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        const delay = 5000;
+                        addMessage("系统", `${delay/1000}秒后尝试重连... (${reconnectAttempts}/${maxReconnectAttempts})`, "system");
+                        setTimeout(function() {
+                            if (ws.readyState === WebSocket.CLOSED) {
+                                addMessage("系统", "尝试重新连接...", "system");
+                                connect();
                             }
-                            break;
-                            
-                        case "tool_result":
-                            // 工具执行结果
-                            const resultPreview = typeof data.result === 'string' 
-                                ? data.result.substring(0, 200) 
-                                : JSON.stringify(data.result).substring(0, 200);
-                            addMessage("✓ 工具结果", `${data.tool_name}: ${resultPreview}${resultPreview.length >= 200 ? '...' : ''}`, "tool-result");
-                            break;
-                            
-                        case "complete":
-                            // 完成消息
-                            addMessage("完成", "消息处理完成", "system");
-                            statusDiv.textContent = "状态: 就绪";
-                            // 重置当前响应容器，为下一条消息做准备
-                            currentResponseDiv = null;
-                            currentResponseContent = "";
-                            break;
-                            
-                        case "error":
-                            // 错误消息
-                            addMessage("错误", data.error, "error");
-                            statusDiv.textContent = "状态: 错误";
-                            currentResponseDiv = null;
-                            currentResponseContent = "";
-                            break;
-                            
-                        default:
-                            console.log("未知消息类型:", data);
-                            addMessage("调试", `未知类型: ${data.type}`, "system");
+                        }, delay);
+                    } else {
+                        addMessage("错误", "重连失败，请刷新页面手动重连", "error");
                     }
-                } catch (e) {
-                    console.error("解析消息失败:", e, event.data);
-                    addMessage("错误", `解析消息失败: ${e.message}`, "error");
-                }
-            };
-            
-            ws.onclose = function() {
-                statusDiv.textContent = "状态: 已断开";
-                addMessage("系统", "WebSocket 连接已断开", "system");
-                // 5秒后自动重连
-                setTimeout(function() {
-                    if (ws.readyState === WebSocket.CLOSED) {
-                        addMessage("系统", "尝试重新连接...", "system");
-                        connect();
-                    }
-                }, 5000);
-            };
-            
-            ws.onerror = function(error) {
-                console.error("WebSocket 错误:", error);
-                statusDiv.textContent = "状态: 连接错误";
-                addMessage("错误", "WebSocket 连接错误", "error");
-            };
+                };
+                
+                ws.onerror = function(error) {
+                    console.error("WebSocket 错误:", error);
+                    statusDiv.textContent = "状态: 连接错误";
+                    statusDiv.className = "status disconnected";
+                    addMessage("错误", "WebSocket 连接错误", "error");
+                };
+                
+            } catch (error) {
+                console.error("创建 WebSocket 连接失败:", error);
+                addMessage("错误", `创建连接失败: ${error.message}`, "error");
+                statusDiv.textContent = "状态: 连接失败";
+                statusDiv.className = "status disconnected";
+            }
         }
         
         function sendMessage() {
@@ -186,38 +323,88 @@
             }
             
             if (!ws || ws.readyState !== WebSocket.OPEN) {
-                addMessage("错误", "WebSocket 未连接，请刷新页面重试", "error");
+                addMessage("错误", "WebSocket 未连接，请等待连接成功后再试", "error");
+                console.log("WebSocket 状态:", ws ? ws.readyState : "null");
                 return;
             }
             
-            // 发送消息
             const messageData = {
                 message: message,
                 conversation_id: conversationId
             };
+            
+            console.log("发送消息:", messageData);
             ws.send(JSON.stringify(messageData));
             
-            // 添加用户消息到界面
             addMessage("用户", message, "user");
             input.value = "";
-            
-            // 创建新的响应容器
             createResponseContainer();
             
-            // 更新状态
             const statusDiv = document.getElementById("status");
             statusDiv.textContent = "状态: 处理中...";
+            statusDiv.className = "status processing";
         }
         
-        function resetConversation() {
-            conversationId = null;
-            currentResponseDiv = null;
-            currentResponseContent = "";
-            addMessage("系统", "会话已重置，将开始新的对话", "system");
+        async function resetConversation() {
+            if (!confirm("确定要重置当前对话吗？重置后当前对话的历史将被清空（但已保存的会话记录不会删除）。")) {
+                return;
+            }
             
-            // 可选：清空输出区域（注释掉以保留历史）
-            // const output = document.getElementById("output");
-            // output.innerHTML = "";
+            const statusDiv = document.getElementById("status");
+            const originalStatus = statusDiv.textContent;
+            statusDiv.textContent = "状态: 重置中...";
+            statusDiv.className = "status processing";
+            
+            try {
+                const success = await callResetAPI();
+                
+                if (success) {
+                    const shouldClear = confirm("是否同时清空显示区域？\n\n选择“确定”将清空所有历史显示，选择“取消”将保留显示记录。");
+                    if (shouldClear) {
+                        clearDisplay();
+                    }
+                    
+                    currentResponseDiv = null;
+                    currentResponseContent = "";
+                    
+                    addMessage("系统", "✅ 对话已重置，可以开始新的对话了", "system");
+                } else {
+                    addMessage("系统", "⚠️ 重置失败，请重试或检查网络连接", "warning");
+                }
+            } catch (error) {
+                console.error("重置过程中出错:", error);
+                addMessage("错误", `重置失败: ${error.message}`, "error");
+            } finally {
+                statusDiv.textContent = "状态: 就绪";
+                statusDiv.className = "status connected";
+            }
+        }
+        
+        function newConversation() {
+            if (conversationId && confirm("确定要创建新会话吗？当前会话的历史将被保存，新会话将开始全新的对话。")) {
+                if (conversationId) {
+                    localStorage.setItem('last_conversation_id_backup', conversationId);
+                }
+                
+                conversationId = null;
+                localStorage.removeItem('last_conversation_id');
+                
+                clearDisplay();
+                currentResponseDiv = null;
+                currentResponseContent = "";
+                
+                addMessage("系统", "🆕 已创建新会话，将开始全新的对话", "system");
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: "new_conversation",
+                        old_conversation_id: localStorage.getItem('last_conversation_id_backup')
+                    }));
+                }
+            } else if (!conversationId) {
+                clearDisplay();
+                addMessage("系统", "🆕 开始新的对话", "system");
+            }
         }
         
         function addMessage(sender, content, className, isIndented = false) {
@@ -230,7 +417,8 @@
                 prefix = "&nbsp;&nbsp;&nbsp;&nbsp;";
             }
             
-            div.innerHTML = `${prefix}<strong>${sender}:</strong> ${escapeHtml(content)}`;
+            const timestamp = new Date().toLocaleTimeString();
+            div.innerHTML = `${prefix}<strong>${sender}:</strong> ${escapeHtml(content)} <span style="font-size: 10px; color: #999;">${timestamp}</span>`;
             output.appendChild(div);
             output.scrollTop = output.scrollHeight;
         }
@@ -247,32 +435,42 @@
         function appendToLastMessage(content) {
             if (currentResponseDiv) {
                 currentResponseContent += content;
-                // 更新显示内容，使用 escapeHtml 但保留已转义的内容
-                const displayContent = currentResponseContent;
-                currentResponseDiv.innerHTML = `<strong>助手:</strong> ${escapeHtml(displayContent)}`;
+                currentResponseDiv.innerHTML = `<strong>助手:</strong> ${escapeHtml(currentResponseContent)}`;
                 const output = document.getElementById("output");
                 output.scrollTop = output.scrollHeight;
             } else {
-                // 如果没有响应容器，创建一个
                 createResponseContainer();
                 appendToLastMessage(content);
             }
         }
         
-        // HTML 转义函数，防止 XSS
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
         
-        // 页面加载时连接
+        // 页面加载时初始化
+        console.log("页面加载，初始化...");
+        loadSavedConversationId();
         connect();
         
         // 支持回车发送
         document.getElementById("message").addEventListener("keypress", function(e) {
             if (e.key === "Enter") {
                 sendMessage();
+            }
+        });
+        
+        // 键盘快捷键
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'r') {
+                e.preventDefault();
+                resetConversation();
+            }
+            if (e.ctrlKey && e.key === 'n') {
+                e.preventDefault();
+                newConversation();
             }
         });
     </script>
