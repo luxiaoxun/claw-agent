@@ -125,11 +125,9 @@ class ElasticsearchQueryService:
 
             return {
                 "total": response['hits']['total']['value'],
+                "hits": response['hits']['hits'],
                 "page_num": page_num,
                 "page_size": page_size,
-                "hits": response['hits']['hits'],
-                "took": response['took'],
-                "timed_out": response['timed_out'],
                 "sort": sort_rules
             }
 

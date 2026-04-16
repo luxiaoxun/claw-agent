@@ -2,7 +2,7 @@
 from typing import List, Optional, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from core.agent.agent_manager import agent_manager
-from core.chat.session_db import SessionDatabase
+from core.chat.session_service import SessionDatabase
 from config.settings import settings
 from config.logging_config import get_logger
 from datetime import datetime

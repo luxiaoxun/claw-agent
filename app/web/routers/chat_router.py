@@ -1,10 +1,10 @@
+# web/routers/chat_router.py
 import json
 import uuid
-from fastapi import APIRouter, Request, Depends, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
-from core.model.chat_model import ChatRequest, ChatResponse
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from common.response import success_response, fail_response
 from config.logging_config import get_logger
-from web.dependencies import get_conversation_manager
+from core.chat.conversation_manager import ConversationManager
 import traceback
 
 logger = get_logger(__name__)
@@ -12,41 +12,30 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/message")
-async def chat(
-        request: Request,
-        conversation_manager=Depends(get_conversation_manager)
-):
+async def chat(request: Request):
     """处理聊天请求"""
     try:
         data = await request.json()
-        if not data:
-            return JSONResponse({"error": "请求体不能为空"}, status_code=400)
+        message = data.get("message")
+        if not data or not isinstance(message, str):
+            return fail_response(message="请求体不能为空")
 
         # 会话ID
         conversation_id = data.get('conversation_id')
         if conversation_id is None:
             conversation_id = str(uuid.uuid4())
-        conversation_manager.set_conversation_id(conversation_id)
-
-        # 验证请求
-        try:
-            chat_request = ChatRequest(
-                message=data.get('message', ''),
-                conversation_id=conversation_id,
-                stream=data.get('stream', False)
-            )
-        except ValueError as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+        conversation_manager = ConversationManager(conversation_id=conversation_id)
+        await conversation_manager.initialize()
 
         # 处理消息
-        logger.info(f"处理聊天请求: {chat_request.message}")
+        logger.info(f"处理聊天请求: {message}")
 
         try:
-            response = await conversation_manager.process_message(chat_request.message)
+            response = await conversation_manager.process_message(message)
         except Exception as e:
             logger.error(f"处理消息时异步执行错误: {str(e)}")
             traceback.print_exc()
-            return JSONResponse({"error": f"处理消息失败: {str(e)}"}, status_code=500)
+            return fail_response(message=f"处理消息失败: {str(e)}")
 
         # 解析response字符串为JSON对象
         try:
@@ -55,67 +44,54 @@ async def chat(
             parsed_response = response
 
         # 创建响应
-        chat_response = ChatResponse(
-            response=parsed_response,
-            conversation_id=chat_request.conversation_id
-        )
+        chat_response = {
+            "response": parsed_response,
+            "conversation_id": conversation_id
+        }
 
-        return chat_response.to_dict()
+        return success_response(data=chat_response)
 
     except Exception as e:
         logger.error(f"处理聊天请求时出错: {str(e)}")
-        traceback.print_exc()
-        return JSONResponse({"error": f"内部错误: {str(e)}"}, status_code=500)
+        return fail_response()
 
 
 @router.post("/reset")
-async def reset(
-        request: Request,
-        conversation_manager=Depends(get_conversation_manager)
-):
+async def reset(request: Request):
     """
     重置当前会话的对话历史
     仅重置内存中的历史记录，不删除数据库中的持久化数据
     """
     try:
-        # 获取请求体中的 conversation_id（可选）
+        # 获取请求体中的 conversation_id
         body = await request.json() if await request.body() else {}
         conversation_id = body.get('conversation_id')
 
-        # 如果请求中提供了 conversation_id，确保使用正确的管理器
-        if conversation_id and conversation_manager.conversation_id != conversation_id:
-            # 重新初始化管理器以使用正确的会话ID
-            await conversation_manager.initialize(conversation_id=conversation_id)
+        if not conversation_id:
+            return fail_response(message="会话ID不能为空")
+
+        # 如果请求中提供了conversation_id，确保使用正确的管理器
+        conversation_manager = ConversationManager(conversation_id=conversation_id)
+        await conversation_manager.initialize()
 
         # 重置历史记录
         await conversation_manager.reset_history()
 
         logger.info(f"对话历史已重置, conversation_id: {conversation_manager.conversation_id}")
 
-        return JSONResponse(
-            content={
-                "status": "success",
-                "message": "对话历史已重置",
+        return success_response(
+            data={
                 "conversation_id": conversation_manager.conversation_id
-            },
-            status_code=200
+            }
         )
 
     except Exception as e:
         logger.error(f"重置对话历史时出错: {str(e)}")
-        traceback.print_exc()
-        return JSONResponse(
-            content={
-                "error": f"重置失败: {str(e)}"
-            },
-            status_code=500
-        )
+        return fail_response()
 
 
 @router.websocket("/ws/message")
-async def websocket_chat(
-        websocket: WebSocket,
-):
+async def websocket_chat(websocket: WebSocket):
     """WebSocket 聊天端点 - 支持流式响应"""
     from core.websocket.websocket_manager import ws_connection_manager
 

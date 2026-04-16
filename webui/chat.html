@@ -65,11 +65,6 @@
         button:hover {
             opacity: 0.8;
         }
-        #resetBtn {
-            background-color: #ff9800;
-            color: white;
-            border: none;
-        }
         #newBtn {
             background-color: #4caf50;
             color: white;
@@ -95,6 +90,10 @@
         .status.processing {
             color: #ff9800;
         }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -103,7 +102,6 @@
     <div class="input-area">
         <input type="text" id="message" placeholder="输入消息...">
         <button id="sendBtn" onclick="sendMessage()">发送</button>
-        <button id="resetBtn" onclick="resetConversation()">重置对话</button>
         <button id="newBtn" onclick="newConversation()">新建会话</button>
     </div>
     <div class="status" id="status">状态: 连接中...</div>
@@ -113,7 +111,6 @@
         let conversationId = null;
         let currentResponseDiv = null;
         let currentResponseContent = "";
-        let isResetting = false;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
 
@@ -140,47 +137,6 @@
             return false;
         }
 
-        // 调用后端重置API
-        async function callResetAPI() {
-            if (isResetting) {
-                addMessage("系统", "正在重置中，请稍后再试...", "warning");
-                return false;
-            }
-
-            isResetting = true;
-            
-            try {
-                addMessage("系统", "正在重置对话历史...", "system");
-                
-                const response = await fetch(`${API_BASE_URL}/chat/reset`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        conversation_id: conversationId
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.status === 'success') {
-                    addMessage("系统", `✓ ${data.message}`, "system");
-                    console.log(`重置成功: ${data.conversation_id}`);
-                    return true;
-                } else {
-                    addMessage("错误", `重置失败: ${data.error || '未知错误'}`, "error");
-                    return false;
-                }
-            } catch (error) {
-                console.error("重置API调用失败:", error);
-                addMessage("错误", `重置失败: ${error.message}`, "error");
-                return false;
-            } finally {
-                isResetting = false;
-            }
-        }
-
         // 清空前端显示
         function clearDisplay() {
             const output = document.getElementById("output");
@@ -190,12 +146,34 @@
             addMessage("系统", "显示区域已清空", "system");
         }
 
+        // 关闭现有WebSocket连接
+        function closeWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log("关闭现有WebSocket连接...");
+                ws.close();
+            }
+        }
+
+        // 新建会话 - 刷新页面
+        function newConversation() {
+            if (confirm("确定要创建新会话吗？当前会话将被保存，页面将刷新以开始新对话。")) {
+                // 清除保存的会话ID
+                localStorage.removeItem('last_conversation_id');
+                
+                // 关闭WebSocket连接
+                closeWebSocket();
+                
+                // 刷新页面
+                window.location.reload();
+            }
+        }
+
         function connect() {
             const statusDiv = document.getElementById("status");
             statusDiv.textContent = "状态: 正在连接...";
             statusDiv.className = "status";
             
-            // 确保 WebSocket URL 正确
+            // WebSocket URL
             const wsUrl = "ws://localhost:5000/api/chat/ws/message";
             console.log("尝试连接 WebSocket:", wsUrl);
             
@@ -282,8 +260,8 @@
                     statusDiv.className = "status disconnected";
                     addMessage("系统", "WebSocket 连接已断开", "system");
                     
-                    // 自动重连
-                    if (reconnectAttempts < maxReconnectAttempts) {
+                    // 自动重连（仅在未手动关闭的情况下）
+                    if (reconnectAttempts < maxReconnectAttempts && !window.isManualClose) {
                         reconnectAttempts++;
                         const delay = 5000;
                         addMessage("系统", `${delay/1000}秒后尝试重连... (${reconnectAttempts}/${maxReconnectAttempts})`, "system");
@@ -293,7 +271,7 @@
                                 connect();
                             }
                         }, delay);
-                    } else {
+                    } else if (reconnectAttempts >= maxReconnectAttempts) {
                         addMessage("错误", "重连失败，请刷新页面手动重连", "error");
                     }
                 };
@@ -345,68 +323,6 @@
             statusDiv.className = "status processing";
         }
         
-        async function resetConversation() {
-            if (!confirm("确定要重置当前对话吗？重置后当前对话的历史将被清空（但已保存的会话记录不会删除）。")) {
-                return;
-            }
-            
-            const statusDiv = document.getElementById("status");
-            const originalStatus = statusDiv.textContent;
-            statusDiv.textContent = "状态: 重置中...";
-            statusDiv.className = "status processing";
-            
-            try {
-                const success = await callResetAPI();
-                
-                if (success) {
-                    const shouldClear = confirm("是否同时清空显示区域？\n\n选择“确定”将清空所有历史显示，选择“取消”将保留显示记录。");
-                    if (shouldClear) {
-                        clearDisplay();
-                    }
-                    
-                    currentResponseDiv = null;
-                    currentResponseContent = "";
-                    
-                    addMessage("系统", "✅ 对话已重置，可以开始新的对话了", "system");
-                } else {
-                    addMessage("系统", "⚠️ 重置失败，请重试或检查网络连接", "warning");
-                }
-            } catch (error) {
-                console.error("重置过程中出错:", error);
-                addMessage("错误", `重置失败: ${error.message}`, "error");
-            } finally {
-                statusDiv.textContent = "状态: 就绪";
-                statusDiv.className = "status connected";
-            }
-        }
-        
-        function newConversation() {
-            if (conversationId && confirm("确定要创建新会话吗？当前会话的历史将被保存，新会话将开始全新的对话。")) {
-                if (conversationId) {
-                    localStorage.setItem('last_conversation_id_backup', conversationId);
-                }
-                
-                conversationId = null;
-                localStorage.removeItem('last_conversation_id');
-                
-                clearDisplay();
-                currentResponseDiv = null;
-                currentResponseContent = "";
-                
-                addMessage("系统", "🆕 已创建新会话，将开始全新的对话", "system");
-                
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        type: "new_conversation",
-                        old_conversation_id: localStorage.getItem('last_conversation_id_backup')
-                    }));
-                }
-            } else if (!conversationId) {
-                clearDisplay();
-                addMessage("系统", "🆕 开始新的对话", "system");
-            }
-        }
-        
         function addMessage(sender, content, className, isIndented = false) {
             const output = document.getElementById("output");
             const div = document.createElement("div");
@@ -418,7 +334,7 @@
             }
             
             const timestamp = new Date().toLocaleTimeString();
-            div.innerHTML = `${prefix}<strong>${sender}:</strong> ${escapeHtml(content)} <span style="font-size: 10px; color: #999;">${timestamp}</span>`;
+            div.innerHTML = `${prefix}<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(content)} <span style="font-size: 10px; color: #999;">${timestamp}</span>`;
             output.appendChild(div);
             output.scrollTop = output.scrollHeight;
         }
@@ -464,13 +380,17 @@
         
         // 键盘快捷键
         document.addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'r') {
-                e.preventDefault();
-                resetConversation();
-            }
             if (e.ctrlKey && e.key === 'n') {
                 e.preventDefault();
                 newConversation();
+            }
+        });
+        
+        // 页面关闭前关闭WebSocket连接
+        window.addEventListener('beforeunload', function() {
+            window.isManualClose = true;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
             }
         });
     </script>

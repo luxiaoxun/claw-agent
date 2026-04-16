@@ -1,4 +1,4 @@
-# core/chat/session_db.py
+# core/chat/session_service.py
 import json
 import os
 from datetime import datetime
@@ -9,7 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import sessionmaker, Session
 from config.logging_config import get_logger
-from config.settings import settings, WORKSPACE_DIR
+from config.settings import WORKSPACE_DIR
 from core.model.db_model import Base, SessionModel, MessageModel
 
 logger = get_logger(__name__)

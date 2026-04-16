@@ -4,6 +4,12 @@
 
 ## 功能特性
 
+### 内置工具
+- 文件读写
+- 命令执行
+- 网页获取
+
+### 内置Skill（样例）
 - 告警解读：通过AI解读分析告警日志
 - 数据查询：通过自然语言查询Elasticsearch
 - 报告生成：通过Skill生成报告
@@ -32,3 +38,7 @@ cp .env.example .env
 
 # 运行项目
 uv run python app/main.py
+```
+
+### API docs
+http://127.0.0.1:5000/docs
