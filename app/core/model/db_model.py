@@ -64,6 +64,6 @@ class MessageModel(Base):
 
 # 创建索引
 Index('idx_messages_conversation_id', MessageModel.conversation_id)
-Index('idx_messages_created_at', MessageModel.conversation_id, MessageModel.create_time)
+Index('idx_messages_create_time', MessageModel.conversation_id, MessageModel.create_time)
 Index('idx_sessions_user_id', SessionModel.user_id)
-Index('idx_sessions_updated_at', SessionModel.update_time)
+Index('idx_sessions_update_time', SessionModel.update_time)

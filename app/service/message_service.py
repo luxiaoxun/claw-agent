@@ -36,12 +36,12 @@ class MessageService:
 
             saved_count = 0
             for msg in messages:
-                # 检查消息是否已存在（简单去重）
+                # 使用更精确的去重条件：相同会话、相同类型、相同内容、时间相近
                 existing = session.query(MessageModel).filter(
                     MessageModel.conversation_id == conversation_id,
+                    MessageModel.message_type == msg.get('type', 'unknown'),
                     MessageModel.content == msg.get('content', ''),
-                    func.abs(func.strftime('%s', MessageModel.create_time) -
-                             func.strftime('%s', datetime.now())) < 5
+                    MessageModel.create_time >= datetime.now()  # 只检查最近的消息
                 ).first()
 
                 if not existing:
@@ -60,7 +60,7 @@ class MessageService:
                 db_session.update_time = datetime.now()
 
             session.commit()
-            logger.info(f"成功保存 {saved_count} 条消息到会话 {conversation_id}")
+            logger.info(f"成功保存 {saved_count} 条新消息到会话 {conversation_id}")
             return True
 
         except Exception as e:
@@ -71,14 +71,17 @@ class MessageService:
             session.close()
 
     def load_messages(self, conversation_id: str, limit: int = 100,
-                      offset: int = 0, message_type: Optional[str] = None) -> List[Dict]:
-        """加载会话的历史消息
+                      offset: int = 0, message_type: Optional[str] = None,
+                      order_desc: bool = False) -> List[Dict]:
+        """
+        加载会话的历史消息
 
         Args:
             conversation_id: 会话ID
             limit: 返回消息数量限制
             offset: 偏移量，用于分页
             message_type: 可选，过滤特定类型的消息
+            order_desc: 是否按时间倒序排列（True: 最新的在前，False: 最早的在前）
         """
         session = self.db_manager.get_session()
         try:
@@ -89,8 +92,15 @@ class MessageService:
             if message_type:
                 query = query.filter(MessageModel.message_type == message_type)
 
-            messages = query.order_by(MessageModel.create_time.asc()) \
-                .limit(limit).offset(offset).all()
+            # 根据 order_desc 参数决定排序方式
+            if order_desc:
+                # 按时间倒序（最新的在前）
+                query = query.order_by(MessageModel.create_time.desc())
+            else:
+                # 按时间正序（最早的在前）
+                query = query.order_by(MessageModel.create_time.asc())
+
+            messages = query.limit(limit).offset(offset).all()
 
             return [msg.to_dict() for msg in messages]
         except Exception as e:

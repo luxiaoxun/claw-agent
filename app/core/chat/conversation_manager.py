@@ -1,5 +1,5 @@
 # core/chat/conversation_manager.py
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from core.agent.agent_manager import agent_manager
 from service.database_service import database_service
@@ -7,7 +7,7 @@ from config.settings import settings
 from config.logging_config import get_logger
 from datetime import datetime
 import uuid
-import json
+import hashlib
 
 logger = get_logger(__name__)
 
@@ -23,6 +23,9 @@ class ConversationManager:
         self.conversation_id = conversation_id
         self.user_id = user_id
         self.conversation_history: List[BaseMessage] = []
+
+        # 记录已保存的消息ID集合，用于去重
+        self._saved_message_ids: set = set()
 
         # 流式处理相关
         self._current_stream_response = ""
@@ -89,7 +92,11 @@ class ConversationManager:
             raise
 
     async def load_history(self):
-        """从数据库加载历史消息"""
+        """
+        从数据库加载历史消息
+        1. 按时间倒序加载最近的 MSG_MAX_HISTORY_LENGTH 条消息
+        2. 在内存中按时间正序构建 conversation_history
+        """
         if not self.conversation_id:
             logger.warning("未提供conversation_id，无法加载历史")
             return
@@ -101,51 +108,102 @@ class ConversationManager:
         session = self.session_service.get_or_create_session(self.conversation_id, self.user_id)
         logger.info(f"加载会话: {session.get('title', '未命名')}")
 
-        # 加载历史消息
-        messages = self.message_service.load_messages(
+        # 加载最近的 MSG_MAX_HISTORY_LENGTH 条历史消息（按时间倒序）
+        messages_desc = self.message_service.load_messages(
             self.conversation_id,
-            limit=settings.MSG_MAX_HISTORY_LENGTH * 2
+            limit=settings.MSG_MAX_HISTORY_LENGTH,
+            offset=0,
+            order_desc=True  # 按时间倒序加载
         )
 
-        # 转换为LangChain消息格式
+        # 将消息按时间正序排列（从旧到新）
+        messages_asc = list(reversed(messages_desc))
+
+        # 清空当前历史
         self.conversation_history = []
-        for msg in messages:
+        self._saved_message_ids.clear()
+
+        # 转换为LangChain消息格式，并记录已保存的消息ID
+        for msg in messages_asc:
             msg_type = msg.get('message_type')
             content = msg.get('content', '')
             tool_calls = msg.get('tool_calls', [])
+            msg_id = msg.get('id')
+
+            # 记录已保存的消息ID（使用数据库ID或内容哈希）
+            if msg_id:
+                self._saved_message_ids.add(msg_id)
+            else:
+                # 如果没有ID，使用内容哈希作为标识
+                msg_hash = self._generate_message_hash(msg_type, content, tool_calls)
+                self._saved_message_ids.add(msg_hash)
 
             if msg_type == 'human':
                 self.conversation_history.append(HumanMessage(content=content))
             elif msg_type == 'ai':
                 ai_msg = AIMessage(content=content)
                 if tool_calls:
-                    # 解析 tool_calls（可能是 JSON 字符串）
-                    if isinstance(tool_calls, str):
-                        tool_calls = json.loads(tool_calls)
                     ai_msg.tool_calls = tool_calls
                 self.conversation_history.append(ai_msg)
             elif msg_type == 'tool':
                 self.conversation_history.append(ToolMessage(content=content))
 
-        logger.info(f"加载了 {len(self.conversation_history)} 条历史消息")
+        logger.info(
+            f"加载了 {len(self.conversation_history)} 条历史消息（最近 {settings.MSG_MAX_HISTORY_LENGTH} 条），已记录 {len(self._saved_message_ids)} 个消息标识")
 
-    async def save_conversation(self):
-        """保存当前对话到数据库"""
+    def _get_context_history(self) -> List[BaseMessage]:
+        """
+        获取用于 AI 上下文的最近历史消息
+        返回最近的 MSG_MAX_HISTORY_LENGTH 条消息（按时间正序）
+        """
+        if not self.conversation_history:
+            return []
+
+        # 获取最近的 MSG_MAX_HISTORY_LENGTH 条消息
+        context_length = min(settings.MSG_MAX_HISTORY_LENGTH, len(self.conversation_history))
+        return self.conversation_history[-context_length:]
+
+    def _generate_message_hash(self, msg_type: str, content: str, tool_calls: List = None) -> str:
+        """生成消息的唯一哈希值（用于去重）"""
+        import json
+        message_str = f"{msg_type}|{content}|{json.dumps(tool_calls, sort_keys=True) if tool_calls else ''}"
+        return hashlib.md5(message_str.encode()).hexdigest()
+
+    async def _save_new_messages(self, messages: List[BaseMessage]):
+        """保存新消息到数据库（只保存未保存过的消息）"""
         if not self.conversation_id:
-            logger.warning("未提供conversation_id，无法保存对话")
+            logger.warning("未提供conversation_id，无法保存消息")
             return
 
         if not self.message_service:
             logger.warning("消息服务未初始化")
             return
 
-        # 转换消息为可存储格式
+        # 转换消息为可存储格式，并过滤已存在的消息
         messages_to_save = []
-        for msg in self.conversation_history:
+        for msg in messages:
+            # 生成消息标识
+            msg_type = 'human' if isinstance(msg, HumanMessage) else \
+                'ai' if isinstance(msg, AIMessage) else \
+                    'tool' if isinstance(msg, ToolMessage) else 'unknown'
+
+            # 生成消息哈希
+            tool_calls = None
+            if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                tool_calls = msg.tool_calls
+            elif isinstance(msg, ToolMessage):
+                tool_calls = None
+
+            msg_hash = self._generate_message_hash(msg_type, msg.content, tool_calls)
+
+            # 检查消息是否已保存
+            if msg_hash in self._saved_message_ids:
+                logger.debug(f"消息已存在，跳过保存: {msg_hash[:8]}")
+                continue
+
+            # 准备保存的消息数据
             msg_data = {
-                'type': 'human' if isinstance(msg, HumanMessage) else
-                'ai' if isinstance(msg, AIMessage) else
-                'tool' if isinstance(msg, ToolMessage) else 'unknown',
+                'type': msg_type,
                 'content': msg.content,
                 'create_time': datetime.now()
             }
@@ -154,15 +212,63 @@ class ConversationManager:
             if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
                 msg_data['tool_calls'] = msg.tool_calls
 
-            messages_to_save.append(msg_data)
+            messages_to_save.append((msg_data, msg_hash))
 
-        # 保存到数据库
+        # 保存新消息到数据库
         if messages_to_save:
-            success = self.message_service.save_messages(self.conversation_id, messages_to_save)
+            # 提取消息数据列表
+            msg_data_list = [msg_data for msg_data, _ in messages_to_save]
+            success = self.message_service.save_messages(self.conversation_id, msg_data_list)
+
             if success:
-                logger.info(f"保存了 {len(messages_to_save)} 条消息到会话 {self.conversation_id}")
+                # 记录已保存的消息ID
+                for _, msg_hash in messages_to_save:
+                    self._saved_message_ids.add(msg_hash)
+                logger.info(f"保存了 {len(messages_to_save)} 条新消息到会话 {self.conversation_id}")
             else:
                 logger.error(f"保存消息到会话 {self.conversation_id} 失败")
+
+    async def _update_history_and_save(self, user_message: str, assistant_response: str, messages: List[BaseMessage]):
+        """更新对话历史并立即保存新消息"""
+        new_messages = []
+
+        # 添加用户消息
+        user_msg = HumanMessage(content=user_message)
+        self.conversation_history.append(user_msg)
+        new_messages.append(user_msg)
+
+        # 添加完整的消息链（保留工具调用等中间信息）
+        for msg in messages:
+            if isinstance(msg, AIMessage):
+                # 如果有工具调用，保留完整消息
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    self.conversation_history.append(msg)
+                    new_messages.append(msg)
+            elif isinstance(msg, ToolMessage):
+                # 保留工具执行结果供上下文使用
+                self.conversation_history.append(msg)
+                new_messages.append(msg)
+
+        # 确保有最终的 AI 响应
+        final_ai_msg = None
+        if not any(
+                isinstance(msg, AIMessage) and msg.content == assistant_response for msg in self.conversation_history):
+            final_ai_msg = AIMessage(content=assistant_response)
+            self.conversation_history.append(final_ai_msg)
+            new_messages.append(final_ai_msg)
+
+        # 立即保存新消息到数据库
+        if new_messages:
+            await self._save_new_messages(new_messages)
+
+        # 限制历史记录长度（保留最近 N 轮对话）
+        # 注意：这里只截断内存中的历史，不影响数据库
+        # 数据库中的完整历史通过 load_history 的 limit 来控制加载数量
+        max_history = settings.MSG_MAX_HISTORY_LENGTH
+        if len(self.conversation_history) > max_history:
+            # 保留最近的消息
+            self.conversation_history = self.conversation_history[-max_history:]
+            logger.debug(f"截断对话历史到 {max_history} 条消息")
 
     async def process_message(self, message: str) -> str:
         """处理用户消息（非流式）"""
@@ -172,19 +278,18 @@ class ConversationManager:
         logger.info(f"处理用户消息: {message}")
 
         try:
+            # 获取用于上下文的最近历史消息
+            context_history = self._get_context_history()
+
             # 调用 Agent 处理消息
             result = await self.deep_agent.process(
                 message,
-                chat_history=self.conversation_history[
-                             -settings.MSG_MAX_HISTORY_LENGTH:] if self.conversation_history else None
+                chat_history=context_history
             )
 
             # 提取响应文本并更新历史
             response_text = self._extract_response_text(result)
-            await self._update_history(message, response_text, result.get("messages", []))
-
-            # 保存到数据库
-            await self.save_conversation()
+            await self._update_history_and_save(message, response_text, result.get("messages", []))
 
             return response_text
 
@@ -202,31 +307,6 @@ class ConversationManager:
                 return msg.content
 
         return "无法获取响应内容"
-
-    async def _update_history(self, user_message: str, assistant_response: str, messages: List[BaseMessage]):
-        """更新对话历史"""
-        # 添加用户消息
-        self.conversation_history.append(HumanMessage(content=user_message))
-
-        # 添加完整的消息链（保留工具调用等中间信息）
-        for msg in messages:
-            if isinstance(msg, AIMessage):
-                # 如果有工具调用，保留完整消息
-                if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    self.conversation_history.append(msg)
-            elif isinstance(msg, ToolMessage):
-                # 保留工具执行结果供上下文使用
-                self.conversation_history.append(msg)
-
-        # 确保有最终的 AI 响应
-        if not any(
-                isinstance(msg, AIMessage) and msg.content == assistant_response for msg in self.conversation_history):
-            self.conversation_history.append(AIMessage(content=assistant_response))
-
-        # 限制历史记录长度（保留最近 N 轮对话）
-        max_history = getattr(settings, 'MSG_MAX_HISTORY_LENGTH', 50)
-        if len(self.conversation_history) > max_history * 2:
-            self.conversation_history = self.conversation_history[-max_history * 2:]
 
     async def process_message_stream(self, message: str):
         """
@@ -249,11 +329,15 @@ class ConversationManager:
             self._streaming_tool_calls = []
 
             chunk_count = 0
+            all_messages = []  # 收集完整的消息链
+
+            # 获取用于上下文的最近历史消息
+            context_history = self._get_context_history()
+
             # 调用 Agent 的流式处理
             async for chunk in self.deep_agent.stream_process(
                     message,
-                    chat_history=self.conversation_history[
-                                 -settings.MSG_MAX_HISTORY_LENGTH:] if self.conversation_history else None
+                    chat_history=context_history
             ):
                 chunk_count += 1
 
@@ -276,6 +360,9 @@ class ConversationManager:
                             "result": chunk.get("result"),
                             "status": chunk.get("status", "success")
                         }
+                        # 收集工具结果消息
+                        if 'message' in chunk:
+                            all_messages.append(chunk['message'])
                     elif chunk_type == "content":
                         content_chunk = chunk.get("content", "")
                         if content_chunk:
@@ -290,6 +377,9 @@ class ConversationManager:
                             "type": "error",
                             "content": chunk.get("error", "未知错误")
                         }
+                    elif chunk_type == "complete" and 'messages' in chunk:
+                        # 收集完整的消息链
+                        all_messages = chunk.get('messages', [])
                     else:
                         logger.warning(f"未知的 chunk 类型: {chunk_type}")
                 else:
@@ -297,18 +387,37 @@ class ConversationManager:
 
             logger.info(f"流式处理完成，共收到 {chunk_count} 个 chunks，总响应长度: {len(self._current_stream_response)}")
 
-            # 流式处理完成后，更新对话历史
+            # 流式处理完成后，更新对话历史并保存
             if self._current_stream_response:
-                self.conversation_history.append(HumanMessage(content=message))
-                self.conversation_history.append(AIMessage(content=self._current_stream_response))
+                # 准备新消息列表
+                new_messages = []
+
+                # 添加用户消息
+                user_msg = HumanMessage(content=message)
+                self.conversation_history.append(user_msg)
+                new_messages.append(user_msg)
+
+                # 添加 AI 响应
+                ai_msg = AIMessage(content=self._current_stream_response)
+                self.conversation_history.append(ai_msg)
+                new_messages.append(ai_msg)
+
+                # 如果有工具调用相关的消息，也一并添加
+                for msg in all_messages:
+                    if isinstance(msg, (AIMessage, ToolMessage)):
+                        # 避免重复添加
+                        if msg not in self.conversation_history:
+                            self.conversation_history.append(msg)
+                            new_messages.append(msg)
+
+                # 立即保存新消息到数据库
+                if new_messages:
+                    await self._save_new_messages(new_messages)
 
                 # 限制历史记录长度
-                max_history = getattr(settings, 'MSG_MAX_HISTORY_LENGTH', 50)
-                if len(self.conversation_history) > max_history * 2:
-                    self.conversation_history = self.conversation_history[-max_history * 2:]
-
-                # 保存到数据库
-                await self.save_conversation()
+                max_history = settings.MSG_MAX_HISTORY_LENGTH
+                if len(self.conversation_history) > max_history:
+                    self.conversation_history = self.conversation_history[-max_history:]
 
             # 发送完成信号
             yield {
@@ -324,8 +433,9 @@ class ConversationManager:
             }
 
     async def reset_history(self):
-        """重置当前会话的对话历史"""
+        """重置当前会话的对话历史（只重置内存，不清除数据库）"""
         self.conversation_history = []
+        self._saved_message_ids.clear()
         logger.info(f"会话 {self.conversation_id} 的对话历史已重置")
 
     async def clear_session(self):
@@ -334,6 +444,7 @@ class ConversationManager:
             success = self.session_service.delete_session(self.conversation_id)
             if success:
                 self.conversation_history = []
+                self._saved_message_ids.clear()
                 logger.info(f"会话 {self.conversation_id} 已完全清除")
             else:
                 logger.error(f"清除会话 {self.conversation_id} 失败")

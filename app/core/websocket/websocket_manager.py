@@ -256,7 +256,7 @@ class WebSocketConnectionManager:
 
     async def close_all_connections(self):
         """关闭所有连接（用于系统关闭时）"""
-        logger.info(f"正在关闭所有 WebSocket 连接，共 {len(self.active_connections)} 个")
+        logger.info(f"正在关闭所有 WebSocket 连接")
         for client_id in list(self.active_connections.keys()):
             await self.disconnect_and_cleanup(client_id)
         logger.info("所有 WebSocket 连接已关闭")
