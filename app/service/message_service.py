@@ -1,8 +1,6 @@
 # service/message_service.py
-import json
 from datetime import datetime
-from typing import List, Dict, Optional
-from sqlalchemy import func
+from typing import List, Dict, Optional, Any
 from config.logging_config import get_logger
 from core.model.db_model import SessionModel, MessageModel
 from service.database_manager import DatabaseManager
@@ -11,16 +9,34 @@ logger = get_logger(__name__)
 
 
 class MessageService:
-    """消息服务 - 负责MessageModel的操作"""
+    """消息服务 - 负责消息轮次的操作"""
 
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
 
-    def save_messages(self, conversation_id: str, messages: List[Dict]) -> bool:
-        """保存消息到数据库"""
+    def save_round_message(self, conversation_id: str,
+                           user_message: str,
+                           ai_response: str,
+                           message_chain: List[Any],
+                           round_number: int,
+                           meta_data: Optional[Dict] = None) -> Optional[int]:
+        """
+        保存一次完整的对话轮次
+
+        Args:
+            conversation_id: 会话ID
+            user_message: 用户消息
+            ai_response: AI响应
+            message_chain: 完整的消息链（LangChain消息对象列表）
+            round_number: 轮次序号
+            meta_data: 元数据
+
+        Returns:
+            保存的记录ID，失败返回None
+        """
         session = self.db_manager.get_session()
         try:
-            # 先确保会话存在
+            # 确保会话存在
             db_session = session.query(SessionModel).filter(
                 SessionModel.conversation_id == conversation_id
             ).first()
@@ -34,54 +50,50 @@ class MessageService:
                 session.add(db_session)
                 session.flush()
 
-            saved_count = 0
-            for msg in messages:
-                # 使用更精确的去重条件：相同会话、相同类型、相同内容、时间相近
-                existing = session.query(MessageModel).filter(
-                    MessageModel.conversation_id == conversation_id,
-                    MessageModel.message_type == msg.get('type', 'unknown'),
-                    MessageModel.content == msg.get('content', ''),
-                    MessageModel.create_time >= datetime.now()  # 只检查最近的消息
-                ).first()
+            # 转换消息链为可存储的JSON格式
+            message_chain_json = self._serialize_message_chain(message_chain)
 
-                if not existing:
-                    db_message = MessageModel(
-                        conversation_id=conversation_id,
-                        message_type=msg.get('type', 'unknown'),
-                        content=msg.get('content', ''),
-                        tool_calls=json.dumps(msg.get('tool_calls', [])) if msg.get('tool_calls') else None,
-                        create_time=msg.get('create_time', datetime.now())
-                    )
-                    session.add(db_message)
-                    saved_count += 1
+            # 创建消息轮次记录
+            message_round = MessageModel(
+                conversation_id=conversation_id,
+                user_message=user_message,
+                ai_response=ai_response,
+                message_chain=message_chain_json,
+                round_number=round_number,
+                meta_data=meta_data,
+                create_time=datetime.now()
+            )
+            session.add(message_round)
 
             # 更新会话的更新时间
-            if saved_count > 0:
-                db_session.update_time = datetime.now()
+            db_session.update_time = datetime.now()
 
             session.commit()
-            logger.info(f"成功保存 {saved_count} 条新消息到会话 {conversation_id}")
-            return True
+            logger.info(f"成功保存对话轮次 {round_number} 到会话 {conversation_id}")
+            return message_round.id
 
         except Exception as e:
             session.rollback()
-            logger.error(f"保存消息失败: {str(e)}")
-            return False
+            logger.error(f"保存对话轮次失败: {str(e)}")
+            return None
         finally:
             session.close()
 
-    def load_messages(self, conversation_id: str, limit: int = 100,
-                      offset: int = 0, message_type: Optional[str] = None,
+    def load_messages(self, conversation_id: str,
+                      limit: int = 50,
+                      offset: int = 0,
                       order_desc: bool = False) -> List[Dict]:
         """
-        加载会话的历史消息
+        加载会话的对话轮次
 
         Args:
             conversation_id: 会话ID
-            limit: 返回消息数量限制
-            offset: 偏移量，用于分页
-            message_type: 可选，过滤特定类型的消息
-            order_desc: 是否按时间倒序排列（True: 最新的在前，False: 最早的在前）
+            limit: 返回记录数量限制
+            offset: 偏移量
+            order_desc: 是否按时间倒序（最新的在前）
+
+        Returns:
+            对话轮次列表
         """
         session = self.db_manager.get_session()
         try:
@@ -89,72 +101,24 @@ class MessageService:
                 MessageModel.conversation_id == conversation_id
             )
 
-            if message_type:
-                query = query.filter(MessageModel.message_type == message_type)
-
             # 根据 order_desc 参数决定排序方式
             if order_desc:
-                # 按时间倒序（最新的在前）
                 query = query.order_by(MessageModel.create_time.desc())
             else:
-                # 按时间正序（最早的在前）
                 query = query.order_by(MessageModel.create_time.asc())
 
-            messages = query.limit(limit).offset(offset).all()
+            rounds = query.limit(limit).offset(offset).all()
 
-            return [msg.to_dict() for msg in messages]
+            return [round_.to_dict() for round_ in rounds]
+
         except Exception as e:
-            logger.error(f"加载消息失败: {str(e)}")
+            logger.error(f"加载对话轮次失败: {str(e)}")
             return []
         finally:
             session.close()
 
-    def delete_messages(self, conversation_id: str, before_time: datetime = None) -> bool:
-        """
-        删除会话中的消息（保留会话本身）
-
-        Args:
-            conversation_id: 会话ID
-            before_time: 可选，删除指定时间之前的消息
-
-        Returns:
-            bool: 是否删除成功
-        """
-        session = self.db_manager.get_session()
-        try:
-            query = session.query(MessageModel).filter(
-                MessageModel.conversation_id == conversation_id
-            )
-
-            if before_time:
-                query = query.filter(MessageModel.create_time <= before_time)
-
-            # 获取要删除的消息数量
-            count = query.count()
-
-            if count > 0:
-                deleted_count = query.delete(synchronize_session=False)
-                # 更新会话的更新时间
-                session.query(SessionModel).filter(
-                    SessionModel.conversation_id == conversation_id
-                ).update({SessionModel.update_time: datetime.now()})
-
-                session.commit()
-                logger.info(f"从会话 {conversation_id} 删除了 {deleted_count} 条消息")
-            else:
-                logger.info(f"会话 {conversation_id} 中没有需要删除的消息")
-
-            return True
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"删除消息失败: {str(e)}")
-            return False
-        finally:
-            session.close()
-
-    def get_message_count(self, conversation_id: str) -> int:
-        """获取会话的消息总数"""
+    def get_message_rounds_count(self, conversation_id: str) -> int:
+        """获取会话的消息轮次总数"""
         session = self.db_manager.get_session()
         try:
             count = session.query(MessageModel).filter(
@@ -162,7 +126,36 @@ class MessageService:
             ).count()
             return count
         except Exception as e:
-            logger.error(f"获取消息数量失败: {str(e)}")
+            logger.error(f"获取消息轮次数量失败: {str(e)}")
             return 0
         finally:
             session.close()
+
+    def _serialize_message_chain(self, messages: List[Any]) -> List[Dict]:
+        """
+        将 LangChain 消息链序列化为 JSON 可存储格式
+        """
+        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+
+        serialized = []
+
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                # HumanMessage 不保存到消息链，因为已经在 user_message 字段中
+                continue
+            elif isinstance(msg, AIMessage):
+                msg_data = {
+                    'type': 'ai',
+                    'content': msg.content,
+                }
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    msg_data['tool_calls'] = msg.tool_calls
+                serialized.append(msg_data)
+            elif isinstance(msg, ToolMessage):
+                serialized.append({
+                    'type': 'tool',
+                    'content': msg.content,
+                    'tool_call_id': msg.tool_call_id
+                })
+
+        return serialized

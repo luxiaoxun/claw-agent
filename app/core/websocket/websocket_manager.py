@@ -122,7 +122,7 @@ class WebSocketConnectionManager:
                 if conn.get("initialized"):
                     await manager.close()
 
-                # 创建新的管理器（不需要传入 db_manager）
+                # 创建新的管理器
                 new_manager = ConversationManager(
                     conversation_id=conversation_id,
                     user_id=user_id

@@ -1,10 +1,10 @@
 # core/model/db_model.py
 import json
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List, Optional, Any
 from sqlalchemy import (
     Column, String, Text, Integer,
-    DateTime, ForeignKey, Index
+    DateTime, ForeignKey, Index, JSON
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -18,12 +18,11 @@ class SessionModel(Base):
     conversation_id = Column(String(255), primary_key=True)
     title = Column(String(500))
     user_id = Column(String(255), nullable=True)
-    # 修改：将 metadata 改为 meta_data，避免与 SQLAlchemy 保留字段冲突
-    meta_data = Column(Text, nullable=True)  # JSON string - 重命名为 meta_data
+    meta_data = Column(Text, nullable=True)  # JSON string
     create_time = Column(DateTime, default=datetime.now)
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    # 关系：一个会话有多条消息
+    # 关系：一个会话有多条消息记录
     messages = relationship("MessageModel", back_populates="session", cascade="all, delete-orphan")
 
     def to_dict(self) -> Dict:
@@ -31,21 +30,28 @@ class SessionModel(Base):
             "conversation_id": self.conversation_id,
             "title": self.title,
             "user_id": self.user_id,
-            "metadata": json.loads(self.meta_data) if self.meta_data else None,  # 返回时仍用 metadata 键名
+            "meta_data": json.loads(self.meta_data) if self.meta_data else None,
             "create_time": self.create_time.isoformat() if self.create_time else None,
             "update_time": self.update_time.isoformat() if self.update_time else None,
         }
 
 
 class MessageModel(Base):
-    """消息表模型"""
+    """
+    消息表模型 - 重新设计
+    每条记录代表一次完整的对话轮次（一问一答）
+    """
     __tablename__ = 'tb_message'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     conversation_id = Column(String(255), ForeignKey('tb_session.conversation_id', ondelete='CASCADE'))
-    message_type = Column(String(50))  # human, ai, tool
-    content = Column(Text)
-    tool_calls = Column(Text, nullable=True)  # JSON string
+    user_message = Column(Text, nullable=False)  # 用户输入的消息
+    ai_response = Column(Text, nullable=False)  # AI 的最终响应
+    # 完整的消息链（JSON 格式，存储完整的交互过程）
+    # 包含：AIMessage (可能带 tool_calls), ToolMessage 等
+    message_chain = Column(JSON, nullable=True)  # 存储完整的消息链
+    round_number = Column(Integer, nullable=False)  # 对话轮次序号（从1开始递增）
+    meta_data = Column(JSON, nullable=True)  # 额外的元数据，如 token 使用量、处理时间等
     create_time = Column(DateTime, default=datetime.now)
 
     # 关系
@@ -55,15 +61,53 @@ class MessageModel(Base):
         return {
             "id": self.id,
             "conversation_id": self.conversation_id,
-            "message_type": self.message_type,
-            "content": self.content,
-            "tool_calls": json.loads(self.tool_calls) if self.tool_calls else None,
+            "user_message": self.user_message,
+            "ai_response": self.ai_response,
+            "message_chain": self.message_chain,
+            "round_number": self.round_number,
+            "meta_data": self.meta_data,
             "create_time": self.create_time.isoformat() if self.create_time else None,
         }
+
+    def to_langchain_messages(self) -> List[Any]:
+        """
+        将存储的消息转换为 LangChain 消息对象列表
+        返回完整的对话历史（包含用户消息、AI消息、工具消息等）
+        """
+        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+
+        messages = []
+
+        # 添加用户消息
+        messages.append(HumanMessage(content=self.user_message))
+
+        # 重建消息链
+        if self.message_chain:
+            for msg_data in self.message_chain:
+                msg_type = msg_data.get('type')
+                content = msg_data.get('content', '')
+
+                if msg_type == 'ai':
+                    ai_msg = AIMessage(content=content)
+                    tool_calls = msg_data.get('tool_calls', [])
+                    if tool_calls:
+                        ai_msg.tool_calls = tool_calls
+                    messages.append(ai_msg)
+                elif msg_type == 'tool':
+                    tool_call_id = msg_data.get('tool_call_id', '')
+                    tool_msg = ToolMessage(content=content, tool_call_id=tool_call_id)
+                    messages.append(tool_msg)
+
+        # 添加 AI 最终响应（如果不在消息链中）
+        if not any(isinstance(msg, AIMessage) and msg.content == self.ai_response for msg in messages):
+            messages.append(AIMessage(content=self.ai_response))
+
+        return messages
 
 
 # 创建索引
 Index('idx_messages_conversation_id', MessageModel.conversation_id)
 Index('idx_messages_create_time', MessageModel.conversation_id, MessageModel.create_time)
+Index('idx_messages_round_number', MessageModel.conversation_id, MessageModel.round_number)
 Index('idx_sessions_user_id', SessionModel.user_id)
 Index('idx_sessions_update_time', SessionModel.update_time)

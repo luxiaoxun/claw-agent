@@ -17,7 +17,7 @@ class SessionService:
         self.db_manager = db_manager
 
     def create_session(self, conversation_id: str, title: str = None,
-                       user_id: str = None, metadata: Dict = None) -> bool:
+                       user_id: str = None, meta_data: Dict = None) -> bool:
         """创建新会话"""
         session = self.db_manager.get_session()
         try:
@@ -25,7 +25,7 @@ class SessionService:
                 conversation_id=conversation_id,
                 title=title or f"会话_{conversation_id[:8]}",
                 user_id=user_id,
-                meta_data=json.dumps(metadata) if metadata else None
+                meta_data=json.dumps(meta_data) if meta_data else None
             )
             session.add(db_session)
             session.commit()
