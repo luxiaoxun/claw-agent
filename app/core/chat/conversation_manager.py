@@ -1,11 +1,13 @@
 # core/chat/conversation_manager.py
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from core.agent.agent_manager import agent_manager
-from core.chat.session_service import SessionDatabase
+from service.database_service import database_service
 from config.settings import settings
 from config.logging_config import get_logger
 from datetime import datetime
+import uuid
+import json
 
 logger = get_logger(__name__)
 
@@ -14,15 +16,13 @@ class ConversationManager:
     """
     对话管理器
     负责会话管理和记忆持久化，通过 AgentManager 共享 Agent 实例
+    使用全局单例的数据库服务
     """
 
     def __init__(self, conversation_id: str = None, user_id: str = None):
         self.conversation_id = conversation_id
         self.user_id = user_id
         self.conversation_history: List[BaseMessage] = []
-
-        # 数据库管理（延迟初始化）
-        self.db: Optional[SessionDatabase] = None
 
         # 流式处理相关
         self._current_stream_response = ""
@@ -35,6 +35,16 @@ class ConversationManager:
     def deep_agent(self):
         """通过 AgentManager 获取共享的 Agent 实例"""
         return agent_manager.get_agent()
+
+    @property
+    def session_service(self):
+        """获取会话服务（从全局容器）"""
+        return database_service.session_service
+
+    @property
+    def message_service(self):
+        """获取消息服务（从全局容器）"""
+        return database_service.message_service
 
     async def initialize(self, conversation_id: str = None, user_id: str = None):
         """
@@ -55,8 +65,10 @@ class ConversationManager:
             if user_id:
                 self.user_id = user_id
 
-            # 初始化数据库
-            self.db = SessionDatabase()
+            # 确保数据库服务已初始化
+            if not database_service.is_initialized():
+                logger.warning("数据库服务未初始化，正在自动初始化...")
+                database_service.initialize()
 
             # 确保 Agent 已初始化（通过 AgentManager）
             if not agent_manager.is_initialized():
@@ -82,15 +94,18 @@ class ConversationManager:
             logger.warning("未提供conversation_id，无法加载历史")
             return
 
-        if not self.db:
-            self.db = SessionDatabase()
+        if not self.session_service or not self.message_service:
+            raise RuntimeError("数据库服务未初始化")
 
         # 获取或创建会话记录
-        session = self.db.get_or_create_session(self.conversation_id, self.user_id)
+        session = self.session_service.get_or_create_session(self.conversation_id, self.user_id)
         logger.info(f"加载会话: {session.get('title', '未命名')}")
 
         # 加载历史消息
-        messages = self.db.load_messages(self.conversation_id, limit=settings.MSG_MAX_HISTORY_LENGTH * 2)
+        messages = self.message_service.load_messages(
+            self.conversation_id,
+            limit=settings.MSG_MAX_HISTORY_LENGTH * 2
+        )
 
         # 转换为LangChain消息格式
         self.conversation_history = []
@@ -104,6 +119,9 @@ class ConversationManager:
             elif msg_type == 'ai':
                 ai_msg = AIMessage(content=content)
                 if tool_calls:
+                    # 解析 tool_calls（可能是 JSON 字符串）
+                    if isinstance(tool_calls, str):
+                        tool_calls = json.loads(tool_calls)
                     ai_msg.tool_calls = tool_calls
                 self.conversation_history.append(ai_msg)
             elif msg_type == 'tool':
@@ -117,8 +135,9 @@ class ConversationManager:
             logger.warning("未提供conversation_id，无法保存对话")
             return
 
-        if not self.db:
-            self.db = SessionDatabase()
+        if not self.message_service:
+            logger.warning("消息服务未初始化")
+            return
 
         # 转换消息为可存储格式
         messages_to_save = []
@@ -139,8 +158,11 @@ class ConversationManager:
 
         # 保存到数据库
         if messages_to_save:
-            self.db.save_messages(self.conversation_id, messages_to_save)
-            logger.info(f"保存了 {len(messages_to_save)} 条消息到会话 {self.conversation_id}")
+            success = self.message_service.save_messages(self.conversation_id, messages_to_save)
+            if success:
+                logger.info(f"保存了 {len(messages_to_save)} 条消息到会话 {self.conversation_id}")
+            else:
+                logger.error(f"保存消息到会话 {self.conversation_id} 失败")
 
     async def process_message(self, message: str) -> str:
         """处理用户消息（非流式）"""
@@ -216,7 +238,6 @@ class ConversationManager:
 
         # 确保有 conversation_id
         if not self.conversation_id:
-            import uuid
             self.conversation_id = str(uuid.uuid4())
             logger.info(f"自动生成新的 conversation_id: {self.conversation_id}")
 
@@ -309,16 +330,16 @@ class ConversationManager:
 
     async def clear_session(self):
         """清除整个会话（从数据库中删除）"""
-        if self.conversation_id and self.db:
-            self.db.delete_session(self.conversation_id)
-            self.conversation_history = []
-            logger.info(f"会话 {self.conversation_id} 已完全清除")
+        if self.conversation_id and self.session_service:
+            success = self.session_service.delete_session(self.conversation_id)
+            if success:
+                self.conversation_history = []
+                logger.info(f"会话 {self.conversation_id} 已完全清除")
+            else:
+                logger.error(f"清除会话 {self.conversation_id} 失败")
 
     async def close(self):
-        """关闭连接（不需要关闭 Agent，因为 Agent 是共享的）"""
-        if self.db:
-            # 数据库连接不需要显式关闭，SQLAlchemy 会管理
-            self.db = None
+        """关闭连接（不需要关闭数据库服务，因为是全局共享的）"""
         self._initialized = False
         logger.info(f"ConversationManager 已关闭, conversation_id: {self.conversation_id}")
 

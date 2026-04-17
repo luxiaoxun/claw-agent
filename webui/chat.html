@@ -191,7 +191,7 @@
                 ws.onmessage = function(event) {
                     try {
                         const data = JSON.parse(event.data);
-                        console.log("收到消息:", data);
+                        //console.log("收到消息:", data);
                         
                         switch(data.type) {
                             case "connection":

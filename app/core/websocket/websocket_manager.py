@@ -2,6 +2,7 @@
 from typing import Dict, Optional
 from fastapi import WebSocket
 from core.chat.conversation_manager import ConversationManager
+from service.database_service import database_service
 from config.logging_config import get_logger
 import uuid
 
@@ -30,7 +31,12 @@ class WebSocketConnectionManager:
         if not client_id:
             client_id = str(uuid.uuid4())
 
-        # 创建新的会话管理器（不立即初始化，等待 conversation_id）
+        # 确保数据库服务已初始化
+        if not database_service.is_initialized():
+            logger.warning("数据库服务未初始化，正在自动初始化...")
+            database_service.initialize()
+
+        # 创建新的会话管理器
         session_manager = ConversationManager()
 
         # 存储连接信息
@@ -38,6 +44,7 @@ class WebSocketConnectionManager:
             "websocket": websocket,
             "conversation_manager": session_manager,
             "conversation_id": None,
+            "user_id": None,
             "initialized": False
         }
 
@@ -77,6 +84,7 @@ class WebSocketConnectionManager:
 
             # 更新连接信息
             conn["conversation_id"] = session_manager.conversation_id
+            conn["user_id"] = user_id
             conn["initialized"] = True
 
             logger.info(f"客户端 {client_id} 的会话管理器已初始化，conversation_id: {session_manager.conversation_id}")
@@ -86,29 +94,91 @@ class WebSocketConnectionManager:
             logger.error(f"初始化客户端 {client_id} 的会话管理器失败: {str(e)}")
             raise
 
-    async def update_conversation_id(self, client_id: str, conversation_id: str):
+    async def update_conversation_id(self, client_id: str, conversation_id: str, user_id: str = None):
         """
         更新客户端的会话ID
 
         Args:
             client_id: 客户端ID
             conversation_id: 新的会话ID
+            user_id: 用户ID（可选）
         """
         conn = self.active_connections.get(client_id)
-        if conn:
+        if not conn:
+            logger.warning(f"客户端 {client_id} 不存在，无法更新会话ID")
+            return
+
+        old_conversation_id = conn.get("conversation_id")
+
+        # 如果会话ID相同，不需要更新
+        if old_conversation_id == conversation_id:
+            logger.debug(f"客户端 {client_id} 的会话ID未变化: {conversation_id}")
+            return
+
+        manager = conn["conversation_manager"]
+        if manager:
+            try:
+                # 先关闭旧的管理器
+                if conn.get("initialized"):
+                    await manager.close()
+
+                # 创建新的管理器（不需要传入 db_manager）
+                new_manager = ConversationManager(
+                    conversation_id=conversation_id,
+                    user_id=user_id
+                )
+                await new_manager.initialize()
+
+                # 更新连接信息
+                conn["conversation_manager"] = new_manager
+                conn["conversation_id"] = conversation_id
+                conn["user_id"] = user_id
+                conn["initialized"] = True
+
+                logger.info(f"客户端 {client_id} 从会话 {old_conversation_id} 切换到 {conversation_id}")
+            except Exception as e:
+                logger.error(f"更新客户端 {client_id} 的会话ID失败: {str(e)}")
+                raise
+        else:
+            # 如果没有管理器，直接更新ID
             conn["conversation_id"] = conversation_id
-            manager = conn["conversation_manager"]
-            if manager:
-                manager.conversation_id = conversation_id
-                # 如果已初始化且需要加载新会话的历史，重新加载
-                if conn.get("initialized") and conversation_id:
-                    await manager.load_history()
-                    logger.info(
-                        f"客户端 {client_id} 切换到会话 {conversation_id}，加载了 {len(manager.conversation_history)} 条历史消息")
+            conn["user_id"] = user_id
             logger.debug(f"客户端 {client_id} 的会话ID已更新为 {conversation_id}")
 
+    async def reload_session(self, client_id: str, conversation_id: str = None):
+        """
+        重新加载当前会话的历史记录
+
+        Args:
+            client_id: 客户端ID
+            conversation_id: 可选的会话ID，如果提供则先切换会话
+        """
+        conn = self.active_connections.get(client_id)
+        if not conn:
+            logger.warning(f"客户端 {client_id} 不存在，无法重新加载会话")
+            return
+
+        manager = conn["conversation_manager"]
+        if not manager:
+            logger.warning(f"客户端 {client_id} 的会话管理器不存在")
+            return
+
+        try:
+            # 如果提供了会话ID且与当前不同，先更新
+            if conversation_id and conversation_id != conn.get("conversation_id"):
+                await self.update_conversation_id(client_id, conversation_id)
+                manager = conn["conversation_manager"]
+
+            # 重新加载历史记录
+            await manager.load_history()
+            logger.info(
+                f"客户端 {client_id} 重新加载了会话 {manager.conversation_id} 的历史，共 {len(manager.conversation_history)} 条消息")
+        except Exception as e:
+            logger.error(f"重新加载客户端 {client_id} 的会话历史失败: {str(e)}")
+            raise
+
     def disconnect(self, client_id: str):
-        """断开连接（同步版本）"""
+        """断开连接（同步版本，仅移除连接，不清理资源）"""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
             logger.info(f"WebSocket 客户端 {client_id} 已断开")
@@ -116,13 +186,23 @@ class WebSocketConnectionManager:
     async def disconnect_and_cleanup(self, client_id: str):
         """断开连接并清理资源（异步版本）"""
         if client_id in self.active_connections:
-            manager = self.active_connections[client_id].get("conversation_manager")
+            conn = self.active_connections[client_id]
+            manager = conn.get("conversation_manager")
             if manager:
                 try:
                     await manager.close()
                     logger.info(f"客户端 {client_id} 的会话管理器已关闭")
                 except Exception as e:
                     logger.error(f"关闭客户端 {client_id} 的会话管理器时出错: {str(e)}")
+
+            # 关闭 WebSocket 连接（如果仍然打开）
+            websocket = conn.get("websocket")
+            if websocket:
+                try:
+                    await websocket.close()
+                except Exception as e:
+                    logger.debug(f"关闭 WebSocket 连接时出错: {str(e)}")
+
             del self.active_connections[client_id]
             logger.info(f"WebSocket 客户端 {client_id} 已断开并清理资源")
 
@@ -140,6 +220,16 @@ class WebSocketConnectionManager:
         """获取客户端的当前会话ID"""
         conn = self.active_connections.get(client_id)
         return conn.get("conversation_id") if conn else None
+
+    def get_user_id(self, client_id: str) -> Optional[str]:
+        """获取客户端的用户ID"""
+        conn = self.active_connections.get(client_id)
+        return conn.get("user_id") if conn else None
+
+    def is_manager_initialized(self, client_id: str) -> bool:
+        """检查客户端的会话管理器是否已初始化"""
+        conn = self.active_connections.get(client_id)
+        return conn.get("initialized", False) if conn else False
 
     async def send_to_client(self, client_id: str, message: dict):
         """向指定客户端发送消息"""
@@ -163,6 +253,13 @@ class WebSocketConnectionManager:
     def is_client_connected(self, client_id: str) -> bool:
         """检查客户端是否已连接"""
         return client_id in self.active_connections
+
+    async def close_all_connections(self):
+        """关闭所有连接（用于系统关闭时）"""
+        logger.info(f"正在关闭所有 WebSocket 连接，共 {len(self.active_connections)} 个")
+        for client_id in list(self.active_connections.keys()):
+            await self.disconnect_and_cleanup(client_id)
+        logger.info("所有 WebSocket 连接已关闭")
 
 
 # 全局实例
