@@ -15,7 +15,7 @@ class SessionModel(Base):
     """会话表模型"""
     __tablename__ = 'tb_session'
 
-    conversation_id = Column(String(255), primary_key=True)
+    session_id = Column(String(255), primary_key=True)
     title = Column(String(500))
     user_id = Column(String(255), nullable=True)
     meta_data = Column(Text, nullable=True)  # JSON string
@@ -27,7 +27,7 @@ class SessionModel(Base):
 
     def to_dict(self) -> Dict:
         return {
-            "conversation_id": self.conversation_id,
+            "session_id": self.session_id,
             "title": self.title,
             "user_id": self.user_id,
             "meta_data": json.loads(self.meta_data) if self.meta_data else None,
@@ -44,7 +44,7 @@ class MessageModel(Base):
     __tablename__ = 'tb_message'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    conversation_id = Column(String(255), ForeignKey('tb_session.conversation_id', ondelete='CASCADE'))
+    session_id = Column(String(255), ForeignKey('tb_session.session_id', ondelete='CASCADE'))
     user_message = Column(Text, nullable=False)  # 用户输入的消息
     ai_response = Column(Text, nullable=False)  # AI 的最终响应
     # 完整的消息链（JSON 格式，存储完整的交互过程）
@@ -60,7 +60,7 @@ class MessageModel(Base):
     def to_dict(self) -> Dict:
         return {
             "id": self.id,
-            "conversation_id": self.conversation_id,
+            "session_id": self.session_id,
             "user_message": self.user_message,
             "ai_response": self.ai_response,
             "message_chain": self.message_chain,
@@ -106,8 +106,7 @@ class MessageModel(Base):
 
 
 # 创建索引
-Index('idx_messages_conversation_id', MessageModel.conversation_id)
-Index('idx_messages_create_time', MessageModel.conversation_id, MessageModel.create_time)
-Index('idx_messages_round_number', MessageModel.conversation_id, MessageModel.round_number)
+Index('idx_messages_session_id', MessageModel.session_id)
+Index('idx_messages_create_time', MessageModel.session_id, MessageModel.create_time)
 Index('idx_sessions_user_id', SessionModel.user_id)
 Index('idx_sessions_update_time', SessionModel.update_time)

@@ -13,7 +13,7 @@ router = APIRouter(prefix="/session", tags=["session"])
 
 # 请求/响应模型
 class SessionCreate(BaseModel):
-    conversation_id: Optional[str] = None
+    session_id: Optional[str] = None
     title: Optional[str] = None
     user_id: Optional[str] = None
     meta_data: Optional[dict] = None
@@ -26,7 +26,7 @@ class SessionUpdate(BaseModel):
 class MessageRoundResponse(BaseModel):
     """消息轮次响应模型"""
     id: int
-    conversation_id: str
+    session_id: str
     user_message: str
     ai_response: str
     message_chain: Optional[dict] = None
@@ -36,7 +36,7 @@ class MessageRoundResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    conversation_id: str
+    session_id: str
     title: str
     create_time: str
     update_time: str
@@ -72,11 +72,11 @@ async def list_sessions(
         for session in sessions:
             # 获取会话的轮次数
             round_count = database_service.message_service.get_message_rounds_count(
-                session.get('conversation_id')
+                session.get('session_id')
             )
 
             sessions_data.append({
-                "conversation_id": session.get('conversation_id'),
+                "session_id": session.get('session_id'),
                 "title": session.get('title', ''),
                 "create_time": session.get('create_time'),
                 "update_time": session.get('update_time'),
@@ -97,23 +97,23 @@ async def list_sessions(
         return fail_response(message=f"获取会话列表失败: {str(e)}")
 
 
-@router.get("/{conversation_id}")
-async def get_session(conversation_id: str):
+@router.get("/{session_id}")
+async def get_session(session_id: str):
     """获取单个会话详情"""
     try:
-        logger.info(f"获取会话详情: conversation_id={conversation_id}")
+        logger.info(f"获取会话详情: session_id={session_id}")
 
         # 使用 session_service 获取会话
-        session = database_service.session_service.get_session(conversation_id)
+        session = database_service.session_service.get_session(session_id)
         if not session:
-            logger.warning(f"会话不存在: {conversation_id}")
+            logger.warning(f"会话不存在: {session_id}")
             return fail_response(message="会话不存在")
 
         # 使用 message_service 获取轮次数
-        round_count = database_service.message_service.get_message_rounds_count(conversation_id)
+        round_count = database_service.message_service.get_message_rounds_count(session_id)
 
         session_data = {
-            "conversation_id": session.get('conversation_id'),
+            "session_id": session.get('session_id'),
             "title": session.get('title', ''),
             "create_time": session.get('create_time'),
             "update_time": session.get('update_time'),
@@ -136,12 +136,12 @@ async def get_session(conversation_id: str):
 async def create_session(session_data: SessionCreate):
     """创建新会话"""
     try:
-        conversation_id = session_data.conversation_id or str(uuid.uuid4())
-        logger.info(f"创建会话: conversation_id={conversation_id}, user_id={session_data.user_id}")
+        session_id = session_data.session_id or str(uuid.uuid4())
+        logger.info(f"创建会话: session_id={session_id}, user_id={session_data.user_id}")
 
         # 使用 session_service 创建会话
         success = database_service.session_service.create_session(
-            conversation_id=conversation_id,
+            session_id=session_id,
             title=session_data.title,
             user_id=session_data.user_id,
             meta_data=session_data.meta_data
@@ -149,11 +149,11 @@ async def create_session(session_data: SessionCreate):
 
         if success:
             return success_response(
-                data={"conversation_id": conversation_id},
+                data={"session_id": session_id},
                 message="会话创建成功"
             )
         else:
-            logger.error(f"会话创建失败: {conversation_id}")
+            logger.error(f"会话创建失败: {session_id}")
             return fail_response(message="会话创建失败")
 
     except Exception as e:
@@ -161,22 +161,22 @@ async def create_session(session_data: SessionCreate):
         return fail_response(message=f"创建会话失败: {str(e)}")
 
 
-@router.put("/{conversation_id}")
-async def update_session(conversation_id: str, update_data: SessionUpdate):
+@router.put("/{session_id}")
+async def update_session(session_id: str, update_data: SessionUpdate):
     """更新会话信息（如标题）"""
     try:
-        logger.info(f"更新会话: conversation_id={conversation_id}, title={update_data.title}")
+        logger.info(f"更新会话: session_id={session_id}, title={update_data.title}")
 
         # 使用 session_service 更新会话标题
         success = database_service.session_service.update_session_title(
-            conversation_id,
+            session_id,
             update_data.title
         )
 
         if success:
             return success_response(message="会话更新成功")
         else:
-            logger.warning(f"会话不存在，无法更新: {conversation_id}")
+            logger.warning(f"会话不存在，无法更新: {session_id}")
             return fail_response(message="会话不存在")
 
     except Exception as e:
@@ -184,19 +184,19 @@ async def update_session(conversation_id: str, update_data: SessionUpdate):
         return fail_response(message=f"更新会话失败: {str(e)}")
 
 
-@router.delete("/{conversation_id}")
-async def delete_session(conversation_id: str):
+@router.delete("/{session_id}")
+async def delete_session(session_id: str):
     """删除会话"""
     try:
-        logger.info(f"删除会话: conversation_id={conversation_id}")
+        logger.info(f"删除会话: session_id={session_id}")
 
         # 使用 session_service 删除会话
-        success = database_service.session_service.delete_session(conversation_id)
+        success = database_service.session_service.delete_session(session_id)
 
         if success:
             return success_response(message="会话删除成功")
         else:
-            logger.warning(f"会话不存在，无法删除: {conversation_id}")
+            logger.warning(f"会话不存在，无法删除: {session_id}")
             return fail_response(message="会话不存在")
 
     except Exception as e:
@@ -204,9 +204,9 @@ async def delete_session(conversation_id: str):
         return fail_response(message=f"删除会话失败: {str(e)}")
 
 
-@router.get("/{conversation_id}/messages")
-async def get_conversation_messages(
-        conversation_id: str,
+@router.get("/{session_id}/messages")
+async def get_session_messages(
+        session_id: str,
         limit: int = 50,
         offset: int = 0,
         order_desc: bool = False
@@ -217,28 +217,28 @@ async def get_conversation_messages(
     """
     try:
         logger.info(
-            f"获取会话轮次: conversation_id={conversation_id}, limit={limit}, offset={offset}, order_desc={order_desc}")
+            f"获取会话轮次: session_id={session_id}, limit={limit}, offset={offset}, order_desc={order_desc}")
 
         # 检查会话是否存在
-        session = database_service.session_service.get_session(conversation_id)
+        session = database_service.session_service.get_session(session_id)
         if not session:
-            logger.warning(f"会话不存在，无法获取轮次: {conversation_id}")
+            logger.warning(f"会话不存在，无法获取轮次: {session_id}")
             return fail_response(message="会话不存在")
 
         # 使用 message_service 获取对话轮次
         rounds = database_service.message_service.load_messages(
-            conversation_id=conversation_id,
+            session_id=session_id,
             limit=limit,
             offset=offset,
             order_desc=order_desc
         )
 
         # 获取轮次总数
-        total_rounds = database_service.message_service.get_message_rounds_count(conversation_id)
+        total_rounds = database_service.message_service.get_message_rounds_count(session_id)
 
         rounds_data = {
-            "conversation_id": conversation_id,
-            "conversation_title": session.get('title', ''),
+            "session_id": session_id,
+            "session_title": session.get('title', ''),
             "total": total_rounds,
             "returned": len(rounds),
             "offset": offset,
@@ -275,9 +275,9 @@ async def get_statistics(user_id: Optional[str] = None):
 
         # 统计轮次总数
         for session in sessions:
-            conversation_id = session.get('conversation_id')
-            if conversation_id:
-                round_count = database_service.message_service.get_message_rounds_count(conversation_id)
+            session_id = session.get('session_id')
+            if session_id:
+                round_count = database_service.message_service.get_message_rounds_count(session_id)
                 total_rounds += round_count
                 if round_count > 0:
                     sessions_with_rounds += 1

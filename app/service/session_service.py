@@ -16,14 +16,14 @@ class SessionService:
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
 
-    def create_session(self, conversation_id: str, title: str = None,
+    def create_session(self, session_id: str, title: str = None,
                        user_id: str = None, meta_data: Dict = None) -> bool:
         """创建新会话"""
         session = self.db_manager.get_session()
         try:
             db_session = SessionModel(
-                conversation_id=conversation_id,
-                title=title or f"会话_{conversation_id[:8]}",
+                session_id=session_id,
+                title=title or f"会话_{session_id[:8]}",
                 user_id=user_id,
                 meta_data=json.dumps(meta_data) if meta_data else None
             )
@@ -37,12 +37,12 @@ class SessionService:
         finally:
             session.close()
 
-    def get_session(self, conversation_id: str) -> Optional[Dict]:
+    def get_session(self, session_id: str) -> Optional[Dict]:
         """获取会话信息"""
         session = self.db_manager.get_session()
         try:
             db_session = session.query(SessionModel).filter(
-                SessionModel.conversation_id == conversation_id
+                SessionModel.session_id == session_id
             ).first()
             return db_session.to_dict() if db_session else None
         except Exception as e:
@@ -51,18 +51,18 @@ class SessionService:
         finally:
             session.close()
 
-    def get_or_create_session(self, conversation_id: str, user_id: str = None) -> Dict:
+    def get_or_create_session(self, session_id: str, user_id: str = None) -> Dict:
         """获取或创建会话"""
         session = self.db_manager.get_session()
         try:
             db_session = session.query(SessionModel).filter(
-                SessionModel.conversation_id == conversation_id
+                SessionModel.session_id == session_id
             ).first()
 
             if not db_session:
                 db_session = SessionModel(
-                    conversation_id=conversation_id,
-                    title=f"会话_{conversation_id[:8]}",
+                    session_id=session_id,
+                    title=f"会话_{session_id[:8]}",
                     user_id=user_id
                 )
                 session.add(db_session)
@@ -84,13 +84,13 @@ class SessionService:
                 SessionModel,
                 func.count(MessageModel.id).label('message_count')
             ).outerjoin(
-                MessageModel, SessionModel.conversation_id == MessageModel.conversation_id
+                MessageModel, SessionModel.session_id == MessageModel.session_id
             )
 
             if user_id:
                 query = query.filter(SessionModel.user_id == user_id)
 
-            results = query.group_by(SessionModel.conversation_id) \
+            results = query.group_by(SessionModel.session_id) \
                 .order_by(SessionModel.update_time.desc()) \
                 .limit(limit).offset(offset).all()
 
@@ -107,11 +107,11 @@ class SessionService:
         finally:
             session.close()
 
-    def delete_session(self, conversation_id: str) -> bool:
+    def delete_session(self, session_id: str) -> bool:
         """删除会话（级联删除消息）"""
         session = self.db_manager.get_session()
         try:
-            stmt = delete(SessionModel).where(SessionModel.conversation_id == conversation_id)
+            stmt = delete(SessionModel).where(SessionModel.session_id == session_id)
             result = session.execute(stmt)
             session.commit()
             return result.rowcount > 0
@@ -122,12 +122,12 @@ class SessionService:
         finally:
             session.close()
 
-    def update_session_title(self, conversation_id: str, title: str) -> bool:
+    def update_session_title(self, session_id: str, title: str) -> bool:
         """更新会话标题"""
         session = self.db_manager.get_session()
         try:
             db_session = session.query(SessionModel).filter(
-                SessionModel.conversation_id == conversation_id
+                SessionModel.session_id == session_id
             ).first()
 
             if db_session:

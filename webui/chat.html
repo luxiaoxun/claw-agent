@@ -102,13 +102,13 @@
     <div class="input-area">
         <input type="text" id="message" placeholder="输入消息...">
         <button id="sendBtn" onclick="sendMessage()">发送</button>
-        <button id="newBtn" onclick="newConversation()">新建会话</button>
+        <button id="newBtn" onclick="newSession()">新建会话</button>
     </div>
     <div class="status" id="status">状态: 连接中...</div>
 
     <script>
         let ws = null;
-        let conversationId = null;
+        let sessionId = null;
         let currentResponseDiv = null;
         let currentResponseContent = "";
         let reconnectAttempts = 0;
@@ -118,19 +118,19 @@
         const API_BASE_URL = "http://localhost:5000/api";
 
         // 保存会话ID到localStorage
-        function saveConversationId(id) {
+        function saveSessionId(id) {
             if (id) {
-                localStorage.setItem('last_conversation_id', id);
-                conversationId = id;
+                localStorage.setItem('last_session_id', id);
+                sessionId = id;
                 console.log(`会话ID已保存: ${id}`);
             }
         }
 
         // 加载保存的会话ID
-        function loadSavedConversationId() {
-            const savedId = localStorage.getItem('last_conversation_id');
+        function loadSavedSessionId() {
+            const savedId = localStorage.getItem('last_session_id');
             if (savedId) {
-                conversationId = savedId;
+                sessionId = savedId;
                 addMessage("系统", `恢复上次会话: ${savedId.substring(0, 8)}...`, "system");
                 return true;
             }
@@ -155,10 +155,10 @@
         }
 
         // 新建会话 - 刷新页面
-        function newConversation() {
+        function newSession() {
             if (confirm("确定要创建新会话吗？当前会话将被保存，页面将刷新以开始新对话。")) {
                 // 清除保存的会话ID
-                localStorage.removeItem('last_conversation_id');
+                localStorage.removeItem('last_session_id');
                 
                 // 关闭WebSocket连接
                 closeWebSocket();
@@ -201,10 +201,10 @@
                                 break;
                                 
                             case "session":
-                                if (data.conversation_id) {
-                                    conversationId = data.conversation_id;
-                                    saveConversationId(conversationId);
-                                    addMessage("系统", `会话ID: ${conversationId.substring(0, 8)}...`, "system");
+                                if (data.session_id) {
+                                    sessionId = data.session_id;
+                                    saveSessionId(sessionId);
+                                    addMessage("系统", `会话ID: ${sessionId.substring(0, 8)}...`, "system");
                                 }
                                 break;
                                 
@@ -308,7 +308,7 @@
             
             const messageData = {
                 message: message,
-                conversation_id: conversationId
+                session_id: sessionId
             };
             
             console.log("发送消息:", messageData);
@@ -368,7 +368,7 @@
         
         // 页面加载时初始化
         console.log("页面加载，初始化...");
-        loadSavedConversationId();
+        loadSavedSessionId();
         connect();
         
         // 支持回车发送
@@ -382,7 +382,7 @@
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey && e.key === 'n') {
                 e.preventDefault();
-                newConversation();
+                newSession();
             }
         });
         

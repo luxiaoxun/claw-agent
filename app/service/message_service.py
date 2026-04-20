@@ -14,7 +14,7 @@ class MessageService:
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
 
-    def save_round_message(self, conversation_id: str,
+    def save_round_message(self, session_id: str,
                            user_message: str,
                            ai_response: str,
                            message_chain: List[Any],
@@ -24,7 +24,7 @@ class MessageService:
         保存一次完整的对话轮次
 
         Args:
-            conversation_id: 会话ID
+            session_id: 会话ID
             user_message: 用户消息
             ai_response: AI响应
             message_chain: 完整的消息链（LangChain消息对象列表）
@@ -38,14 +38,14 @@ class MessageService:
         try:
             # 确保会话存在
             db_session = session.query(SessionModel).filter(
-                SessionModel.conversation_id == conversation_id
+                SessionModel.session_id == session_id
             ).first()
 
             if not db_session:
                 # 自动创建会话
                 db_session = SessionModel(
-                    conversation_id=conversation_id,
-                    title=f"会话_{conversation_id[:8]}"
+                    session_id=session_id,
+                    title=f"会话_{session_id[:8]}"
                 )
                 session.add(db_session)
                 session.flush()
@@ -55,7 +55,7 @@ class MessageService:
 
             # 创建消息轮次记录
             message_round = MessageModel(
-                conversation_id=conversation_id,
+                session_id=session_id,
                 user_message=user_message,
                 ai_response=ai_response,
                 message_chain=message_chain_json,
@@ -69,7 +69,7 @@ class MessageService:
             db_session.update_time = datetime.now()
 
             session.commit()
-            logger.info(f"成功保存对话轮次 {round_number} 到会话 {conversation_id}")
+            logger.info(f"成功保存对话轮次 {round_number} 到会话 {session_id}")
             return message_round.id
 
         except Exception as e:
@@ -79,7 +79,7 @@ class MessageService:
         finally:
             session.close()
 
-    def load_messages(self, conversation_id: str,
+    def load_messages(self, session_id: str,
                       limit: int = 50,
                       offset: int = 0,
                       order_desc: bool = False) -> List[Dict]:
@@ -87,7 +87,7 @@ class MessageService:
         加载会话的对话轮次
 
         Args:
-            conversation_id: 会话ID
+            session_id: 会话ID
             limit: 返回记录数量限制
             offset: 偏移量
             order_desc: 是否按时间倒序（最新的在前）
@@ -98,7 +98,7 @@ class MessageService:
         session = self.db_manager.get_session()
         try:
             query = session.query(MessageModel).filter(
-                MessageModel.conversation_id == conversation_id
+                MessageModel.session_id == session_id
             )
 
             # 根据 order_desc 参数决定排序方式
@@ -117,12 +117,12 @@ class MessageService:
         finally:
             session.close()
 
-    def get_message_rounds_count(self, conversation_id: str) -> int:
+    def get_message_rounds_count(self, session_id: str) -> int:
         """获取会话的消息轮次总数"""
         session = self.db_manager.get_session()
         try:
             count = session.query(MessageModel).filter(
-                MessageModel.conversation_id == conversation_id
+                MessageModel.session_id == session_id
             ).count()
             return count
         except Exception as e:

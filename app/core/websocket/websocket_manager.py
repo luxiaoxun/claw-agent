@@ -1,7 +1,7 @@
 # core/websocket/websocket_manager.py
 from typing import Dict, Optional
 from fastapi import WebSocket
-from core.chat.conversation_manager import ConversationManager
+from core.chat.session_manager import SessionManager
 from service.database_service import database_service
 from config.logging_config import get_logger
 import uuid
@@ -37,13 +37,13 @@ class WebSocketConnectionManager:
             database_service.initialize()
 
         # 创建新的会话管理器
-        session_manager = ConversationManager()
+        session_manager = SessionManager()
 
         # 存储连接信息
         self.active_connections[client_id] = {
             "websocket": websocket,
-            "conversation_manager": session_manager,
-            "conversation_id": None,
+            "session_manager": session_manager,
+            "session_id": None,
             "user_id": None,
             "initialized": False
         }
@@ -51,56 +51,56 @@ class WebSocketConnectionManager:
         logger.info(f"WebSocket 客户端 {client_id} 已连接")
         return client_id
 
-    async def initialize_manager(self, client_id: str, conversation_id: str = None,
-                                 user_id: str = None) -> ConversationManager:
+    async def initialize_manager(self, client_id: str, session_id: str = None,
+                                 user_id: str = None) -> SessionManager:
         """
         初始化客户端的会话管理器（异步）
 
         Args:
             client_id: 客户端ID
-            conversation_id: 会话ID（可选）
+            session_id: 会话ID（可选）
             user_id: 用户ID（可选）
 
         Returns:
-            ConversationManager: 初始化后的会话管理器
+            SessionManager: 初始化后的会话管理器
         """
         conn = self.active_connections.get(client_id)
         if not conn:
             raise ValueError(f"客户端 {client_id} 不存在")
 
-        session_manager = conn["conversation_manager"]
+        session_manager = conn["session_manager"]
 
-        # 如果已经初始化且 conversation_id 相同，直接返回
-        if conn.get("initialized") and session_manager.conversation_id == conversation_id:
-            logger.debug(f"客户端 {client_id} 的会话管理器已初始化，conversation_id: {conversation_id}")
+        # 如果已经初始化且 session_id 相同，直接返回
+        if conn.get("initialized") and session_manager.session_id == session_id:
+            logger.debug(f"客户端 {client_id} 的会话管理器已初始化，session_id: {session_id}")
             return session_manager
 
         # 初始化会话管理器
         try:
             await session_manager.initialize(
-                conversation_id=conversation_id,
+                session_id=session_id,
                 user_id=user_id
             )
 
             # 更新连接信息
-            conn["conversation_id"] = session_manager.conversation_id
+            conn["session_id"] = session_manager.session_id
             conn["user_id"] = user_id
             conn["initialized"] = True
 
-            logger.info(f"客户端 {client_id} 的会话管理器已初始化，conversation_id: {session_manager.conversation_id}")
+            logger.info(f"客户端 {client_id} 的会话管理器已初始化，session_id: {session_manager.session_id}")
             return session_manager
 
         except Exception as e:
             logger.error(f"初始化客户端 {client_id} 的会话管理器失败: {str(e)}")
             raise
 
-    async def update_conversation_id(self, client_id: str, conversation_id: str, user_id: str = None):
+    async def update_session_id(self, client_id: str, session_id: str, user_id: str = None):
         """
         更新客户端的会话ID
 
         Args:
             client_id: 客户端ID
-            conversation_id: 新的会话ID
+            session_id: 新的会话ID
             user_id: 用户ID（可选）
         """
         conn = self.active_connections.get(client_id)
@@ -108,14 +108,14 @@ class WebSocketConnectionManager:
             logger.warning(f"客户端 {client_id} 不存在，无法更新会话ID")
             return
 
-        old_conversation_id = conn.get("conversation_id")
+        old_session_id = conn.get("session_id")
 
         # 如果会话ID相同，不需要更新
-        if old_conversation_id == conversation_id:
-            logger.debug(f"客户端 {client_id} 的会话ID未变化: {conversation_id}")
+        if old_session_id == session_id:
+            logger.debug(f"客户端 {client_id} 的会话ID未变化: {session_id}")
             return
 
-        manager = conn["conversation_manager"]
+        manager = conn["session_manager"]
         if manager:
             try:
                 # 先关闭旧的管理器
@@ -123,56 +123,56 @@ class WebSocketConnectionManager:
                     await manager.close()
 
                 # 创建新的管理器
-                new_manager = ConversationManager(
-                    conversation_id=conversation_id,
+                new_manager = SessionManager(
+                    session_id=session_id,
                     user_id=user_id
                 )
                 await new_manager.initialize()
 
                 # 更新连接信息
-                conn["conversation_manager"] = new_manager
-                conn["conversation_id"] = conversation_id
+                conn["session_manager"] = new_manager
+                conn["session_id"] = session_id
                 conn["user_id"] = user_id
                 conn["initialized"] = True
 
-                logger.info(f"客户端 {client_id} 从会话 {old_conversation_id} 切换到 {conversation_id}")
+                logger.info(f"客户端 {client_id} 从会话 {old_session_id} 切换到 {session_id}")
             except Exception as e:
                 logger.error(f"更新客户端 {client_id} 的会话ID失败: {str(e)}")
                 raise
         else:
             # 如果没有管理器，直接更新ID
-            conn["conversation_id"] = conversation_id
+            conn["session_id"] = session_id
             conn["user_id"] = user_id
-            logger.debug(f"客户端 {client_id} 的会话ID已更新为 {conversation_id}")
+            logger.debug(f"客户端 {client_id} 的会话ID已更新为 {session_id}")
 
-    async def reload_session(self, client_id: str, conversation_id: str = None):
+    async def reload_session(self, client_id: str, session_id: str = None):
         """
         重新加载当前会话的历史记录
 
         Args:
             client_id: 客户端ID
-            conversation_id: 可选的会话ID，如果提供则先切换会话
+            session_id: 可选的会话ID，如果提供则先切换会话
         """
         conn = self.active_connections.get(client_id)
         if not conn:
             logger.warning(f"客户端 {client_id} 不存在，无法重新加载会话")
             return
 
-        manager = conn["conversation_manager"]
+        manager = conn["session_manager"]
         if not manager:
             logger.warning(f"客户端 {client_id} 的会话管理器不存在")
             return
 
         try:
             # 如果提供了会话ID且与当前不同，先更新
-            if conversation_id and conversation_id != conn.get("conversation_id"):
-                await self.update_conversation_id(client_id, conversation_id)
-                manager = conn["conversation_manager"]
+            if session_id and session_id != conn.get("session_id"):
+                await self.update_session_id(client_id, session_id)
+                manager = conn["session_manager"]
 
             # 重新加载历史记录
             await manager.load_history()
             logger.info(
-                f"客户端 {client_id} 重新加载了会话 {manager.conversation_id} 的历史，共 {len(manager.conversation_history)} 条消息")
+                f"客户端 {client_id} 重新加载了会话 {manager.session_id} 的历史，共 {len(manager.conversation_history)} 条消息")
         except Exception as e:
             logger.error(f"重新加载客户端 {client_id} 的会话历史失败: {str(e)}")
             raise
@@ -187,7 +187,7 @@ class WebSocketConnectionManager:
         """断开连接并清理资源（异步版本）"""
         if client_id in self.active_connections:
             conn = self.active_connections[client_id]
-            manager = conn.get("conversation_manager")
+            manager = conn.get("session_manager")
             if manager:
                 try:
                     await manager.close()
@@ -206,20 +206,20 @@ class WebSocketConnectionManager:
             del self.active_connections[client_id]
             logger.info(f"WebSocket 客户端 {client_id} 已断开并清理资源")
 
-    def get_manager(self, client_id: str) -> Optional[ConversationManager]:
+    def get_manager(self, client_id: str) -> Optional[SessionManager]:
         """获取客户端的会话管理器"""
         conn = self.active_connections.get(client_id)
-        return conn.get("conversation_manager") if conn else None
+        return conn.get("session_manager") if conn else None
 
     def get_websocket(self, client_id: str) -> Optional[WebSocket]:
         """获取客户端的 WebSocket 连接"""
         conn = self.active_connections.get(client_id)
         return conn.get("websocket") if conn else None
 
-    def get_conversation_id(self, client_id: str) -> Optional[str]:
+    def get_session_id(self, client_id: str) -> Optional[str]:
         """获取客户端的当前会话ID"""
         conn = self.active_connections.get(client_id)
-        return conn.get("conversation_id") if conn else None
+        return conn.get("session_id") if conn else None
 
     def get_user_id(self, client_id: str) -> Optional[str]:
         """获取客户端的用户ID"""

@@ -4,7 +4,7 @@ import uuid
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from common.response import success_response, fail_response
 from config.logging_config import get_logger
-from core.chat.conversation_manager import ConversationManager
+from core.chat.session_manager import SessionManager
 import traceback
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 @router.post("/message")
 async def chat(request: Request):
     """处理聊天请求"""
-    conversation_manager = None
+    session_manager = None
     try:
         data = await request.json()
         message = data.get("message")
@@ -22,19 +22,19 @@ async def chat(request: Request):
             return fail_response(message="请求体不能为空")
 
         # 会话ID
-        conversation_id = data.get('conversation_id')
-        if conversation_id is None:
-            conversation_id = str(uuid.uuid4())
+        session_id = data.get('session_id')
+        if session_id is None:
+            session_id = str(uuid.uuid4())
 
         # 创建对话管理器
-        conversation_manager = ConversationManager(conversation_id=conversation_id)
-        await conversation_manager.initialize()
+        session_manager = SessionManager(session_id=session_id)
+        await session_manager.initialize()
 
         # 处理消息
-        logger.info(f"处理聊天请求: {message}, conversation_id: {conversation_id}")
+        logger.info(f"处理聊天请求: {message}, session_id: {session_id}")
 
         try:
-            response = await conversation_manager.process_message(message)
+            response = await session_manager.process_message(message)
         except Exception as e:
             logger.error(f"处理消息时异步执行错误: {str(e)}")
             traceback.print_exc()
@@ -49,7 +49,7 @@ async def chat(request: Request):
         # 创建响应
         chat_response = {
             "response": parsed_response,
-            "conversation_id": conversation_id
+            "session_id": session_id
         }
 
         return success_response(data=chat_response)
@@ -60,8 +60,8 @@ async def chat(request: Request):
         return fail_response(message=f"处理请求失败: {str(e)}")
     finally:
         # 确保关闭对话管理器
-        if conversation_manager:
-            await conversation_manager.close()
+        if session_manager:
+            await session_manager.close()
 
 
 @router.post("/reset")
@@ -70,27 +70,27 @@ async def reset(request: Request):
     重置当前会话的对话历史
     仅重置内存中的历史记录，不删除数据库中的持久化数据
     """
-    conversation_manager = None
+    session_manager = None
     try:
-        # 获取请求体中的 conversation_id
+        # 获取请求体中的 session_id
         body = await request.json() if await request.body() else {}
-        conversation_id = body.get('conversation_id')
+        session_id = body.get('session_id')
 
-        if not conversation_id:
+        if not session_id:
             return fail_response(message="会话ID不能为空")
 
         # 创建对话管理器
-        conversation_manager = ConversationManager(conversation_id=conversation_id)
-        await conversation_manager.initialize()
+        session_manager = SessionManager(session_id=session_id)
+        await session_manager.initialize()
 
         # 重置历史记录
-        await conversation_manager.reset_history()
+        await session_manager.reset_history()
 
-        logger.info(f"对话历史已重置, conversation_id: {conversation_manager.conversation_id}")
+        logger.info(f"对话历史已重置, session_id: {session_manager.session_id}")
 
         return success_response(
             data={
-                "conversation_id": conversation_manager.conversation_id
+                "session_id": session_manager.session_id
             }
         )
 
@@ -100,8 +100,8 @@ async def reset(request: Request):
         return fail_response(message=f"重置失败: {str(e)}")
     finally:
         # 确保关闭对话管理器
-        if conversation_manager:
-            await conversation_manager.close()
+        if session_manager:
+            await session_manager.close()
 
 
 @router.websocket("/ws/message")
@@ -127,7 +127,7 @@ async def websocket_chat(websocket: WebSocket):
             try:
                 message_data = json.loads(data)
                 user_message = message_data.get('message', '')
-                conversation_id = message_data.get('conversation_id')
+                session_id = message_data.get('session_id')
                 user_id = message_data.get('user_id')
 
                 if not user_message:
@@ -138,32 +138,32 @@ async def websocket_chat(websocket: WebSocket):
                     continue
 
                 # 使用 WebSocketConnectionManager 管理会话
-                conversation_manager = await ws_connection_manager.initialize_manager(
+                session_manager = await ws_connection_manager.initialize_manager(
                     client_id=client_id,
-                    conversation_id=conversation_id,
+                    session_id=session_id,
                     user_id=user_id
                 )
 
                 # 确保有会话ID（如果还是没有，生成一个新的）
-                if not conversation_manager.conversation_id:
-                    new_conversation_id = str(uuid.uuid4())
-                    await ws_connection_manager.update_conversation_id(client_id, new_conversation_id)
-                    conversation_manager = ws_connection_manager.get_manager(client_id)
+                if not session_manager.session_id:
+                    new_session_id = str(uuid.uuid4())
+                    await ws_connection_manager.update_session_id(client_id, new_session_id)
+                    session_manager = ws_connection_manager.get_manager(client_id)
 
                     # 发送会话ID给前端
                     await websocket.send_json({
                         "type": "session",
-                        "conversation_id": new_conversation_id
+                        "session_id": new_session_id
                     })
 
                 logger.info(
-                    f"WebSocket 处理消息: {user_message[:100]}..., conversation_id: {conversation_manager.conversation_id}")
+                    f"WebSocket 处理消息: {user_message[:100]}..., session_id: {session_manager.session_id}")
 
                 # 流式处理消息
                 full_response = ""
                 has_tool_calls = False
 
-                async for chunk in conversation_manager.process_message_stream(user_message):
+                async for chunk in session_manager.process_message_stream(user_message):
                     chunk_type = chunk.get("type", "unknown")
 
                     if chunk_type == "tool_call":
@@ -189,7 +189,7 @@ async def websocket_chat(websocket: WebSocket):
                         await websocket.send_json({
                             "type": "chunk",
                             "content": content_chunk,
-                            "conversation_id": conversation_manager.conversation_id
+                            "session_id": session_manager.session_id
                         })
 
                     elif chunk_type == "error":
@@ -204,7 +204,7 @@ async def websocket_chat(websocket: WebSocket):
                     await websocket.send_json({
                         "type": "complete",
                         "full_response": full_response,
-                        "conversation_id": conversation_manager.conversation_id,
+                        "session_id": session_manager.session_id,
                         "has_tool_calls": has_tool_calls
                     })
 

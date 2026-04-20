@@ -1,4 +1,4 @@
-# core/chat/conversation_manager.py
+# core/chat/session_manager.py
 from typing import List, Dict, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from core.agent.agent_manager import agent_manager
@@ -11,19 +11,19 @@ import uuid
 logger = get_logger(__name__)
 
 
-class ConversationManager:
+class SessionManager:
     """
     对话管理器
     负责会话管理和记忆持久化
     以对话轮次为单位管理消息历史
     """
 
-    def __init__(self, conversation_id: str = None, user_id: str = None):
-        self.conversation_id = conversation_id
+    def __init__(self, session_id: str = None, user_id: str = None):
+        self.session_id = session_id
         self.user_id = user_id
 
         # 存储对话轮次列表，每个元素包含完整的消息轮次
-        self.conversation_rounds: List[Dict] = []
+        self.conversation_history: List[Dict] = []
 
         # 流式处理相关
         self._current_stream_response = ""
@@ -50,22 +50,22 @@ class ConversationManager:
         """获取消息服务（从全局容器）"""
         return database_service.message_service
 
-    async def initialize(self, conversation_id: str = None, user_id: str = None):
+    async def initialize(self, session_id: str = None, user_id: str = None):
         """
         初始化对话管理器
 
         Args:
-            conversation_id: 会话ID（可选）
+            session_id: 会话ID（可选）
             user_id: 用户ID（可选）
         """
         if self._initialized:
-            logger.debug(f"ConversationManager 已初始化，conversation_id: {self.conversation_id}")
+            logger.debug(f"SessionManager 已初始化，session_id: {self.session_id}")
             return self
 
         try:
             # 更新ID
-            if conversation_id:
-                self.conversation_id = conversation_id
+            if session_id:
+                self.session_id = session_id
             if user_id:
                 self.user_id = user_id
 
@@ -79,17 +79,17 @@ class ConversationManager:
                 await agent_manager.initialize()
 
             # 如果有会话ID，加载历史消息
-            if self.conversation_id:
+            if self.session_id:
                 await self.load_history()
-                logger.info(f"加载会话历史: {self.conversation_id}, 轮次数: {len(self.conversation_rounds)}")
+                logger.info(f"加载会话历史: {self.session_id}, 轮次数: {len(self.conversation_history)}")
             else:
-                logger.info("创建新会话，等待 conversation_id")
+                logger.info("创建新会话，等待 session_id")
 
             self._initialized = True
-            logger.info(f"ConversationManager初始化完成, conversation_id: {self.conversation_id}")
+            logger.info(f"SessionManager初始化完成, session_id: {self.session_id}")
             return self
         except Exception as e:
-            logger.error(f"ConversationManager初始化失败: {str(e)}")
+            logger.error(f"SessionManager初始化失败: {str(e)}")
             raise
 
     async def load_history(self):
@@ -97,20 +97,20 @@ class ConversationManager:
         从数据库加载历史对话轮次
         加载最近的 MSG_MAX_HISTORY_LENGTH 次对话轮次
         """
-        if not self.conversation_id:
-            logger.warning("未提供conversation_id，无法加载历史")
+        if not self.session_id:
+            logger.warning("未提供session_id，无法加载历史")
             return
 
         if not self.session_service or not self.message_service:
             raise RuntimeError("数据库服务未初始化")
 
         # 获取或创建会话记录
-        session = self.session_service.get_or_create_session(self.conversation_id, self.user_id)
+        session = self.session_service.get_or_create_session(self.session_id, self.user_id)
         logger.info(f"加载会话: {session.get('title', '未命名')}")
 
         # 加载最近的 MSG_MAX_HISTORY_LENGTH 次对话轮次（按时间倒序）
         rounds_desc = self.message_service.load_messages(
-            self.conversation_id,
+            self.session_id,
             limit=settings.MSG_MAX_HISTORY_LENGTH,
             offset=0,
             order_desc=True
@@ -120,11 +120,11 @@ class ConversationManager:
         rounds_asc = list(reversed(rounds_desc))
 
         # 清空当前历史
-        self.conversation_rounds = []
+        self.conversation_history = []
 
         # 构建对话轮次列表
         for round_data in rounds_asc:
-            self.conversation_rounds.append({
+            self.conversation_history.append({
                 'id': round_data.get('id'),
                 'user_message': round_data.get('user_message'),
                 'ai_response': round_data.get('ai_response'),
@@ -134,26 +134,26 @@ class ConversationManager:
             })
 
         # 设置下一个轮次序号
-        if self.conversation_rounds:
-            self._next_round_number = max(r.get('round_number', 0) for r in self.conversation_rounds) + 1
+        if self.conversation_history:
+            self._next_round_number = max(r.get('round_number', 0) for r in self.conversation_history) + 1
         else:
             self._next_round_number = 1
 
         logger.info(
-            f"加载了 {len(self.conversation_rounds)} 次对话轮次（最近 {settings.MSG_MAX_HISTORY_LENGTH} 次），下一轮次序号: {self._next_round_number}")
+            f"加载了 {len(self.conversation_history)} 次对话轮次（最近 {settings.MSG_MAX_HISTORY_LENGTH} 次），下一轮次序号: {self._next_round_number}")
 
     def _get_context_history(self) -> List[BaseMessage]:
         """
         获取用于 AI 上下文的最近历史消息
         将最近的 MSG_MAX_HISTORY_LENGTH 次对话轮次转换为消息列表
         """
-        if not self.conversation_rounds:
+        if not self.conversation_history:
             return []
 
         context_messages = []
 
         # 取最近的 MSG_MAX_HISTORY_LENGTH 次轮次
-        recent_rounds = self.conversation_rounds[-settings.MSG_MAX_HISTORY_LENGTH:]
+        recent_rounds = self.conversation_history[-settings.MSG_MAX_HISTORY_LENGTH:]
 
         for round_data in recent_rounds:
             # 添加用户消息
@@ -185,8 +185,8 @@ class ConversationManager:
         """
         保存当前对话轮次到数据库
         """
-        if not self.conversation_id:
-            logger.warning("未提供conversation_id，无法保存对话轮次")
+        if not self.session_id:
+            logger.warning("未提供session_id，无法保存对话轮次")
             return
 
         if not self.message_service:
@@ -196,7 +196,7 @@ class ConversationManager:
         try:
             # 保存对话轮次
             round_id = self.message_service.save_round_message(
-                conversation_id=self.conversation_id,
+                session_id=self.session_id,
                 user_message=user_message,
                 ai_response=ai_response,
                 message_chain=messages,  # 传递消息链对象，会在内部序列化
@@ -209,7 +209,7 @@ class ConversationManager:
 
             if round_id:
                 # 更新内存中的对话轮次列表
-                self.conversation_rounds.append({
+                self.conversation_history.append({
                     'id': round_id,
                     'user_message': user_message,
                     'ai_response': ai_response,
@@ -222,8 +222,8 @@ class ConversationManager:
 
                 # 限制内存中的轮次数
                 max_rounds = settings.MSG_MAX_HISTORY_LENGTH
-                if len(self.conversation_rounds) > max_rounds:
-                    self.conversation_rounds = self.conversation_rounds[-max_rounds:]
+                if len(self.conversation_history) > max_rounds:
+                    self.conversation_history = self.conversation_history[-max_rounds:]
 
                 logger.info(f"保存对话轮次 {self._next_round_number - 1} 成功")
             else:
@@ -235,7 +235,7 @@ class ConversationManager:
     async def process_message(self, message: str) -> str:
         """处理用户消息（非流式）"""
         if not self._initialized:
-            raise RuntimeError("ConversationManager尚未初始化")
+            raise RuntimeError("SessionManager尚未初始化")
 
         logger.info(f"处理用户消息: {message}")
 
@@ -281,12 +281,12 @@ class ConversationManager:
         Yields: 流式响应块
         """
         if not self._initialized:
-            raise RuntimeError("ConversationManager尚未初始化")
+            raise RuntimeError("SessionManager尚未初始化")
 
-        # 确保有 conversation_id
-        if not self.conversation_id:
-            self.conversation_id = str(uuid.uuid4())
-            logger.info(f"自动生成新的 conversation_id: {self.conversation_id}")
+        # 确保有 session_id
+        if not self.session_id:
+            self.session_id = str(uuid.uuid4())
+            logger.info(f"自动生成新的 session_id: {self.session_id}")
 
         logger.info(f"流式处理用户消息: {message[:100]}...")
 
@@ -373,24 +373,24 @@ class ConversationManager:
 
     async def reset_history(self):
         """重置当前会话的对话历史（只重置内存，不清除数据库）"""
-        self.conversation_rounds = []
+        self.conversation_history = []
         self._next_round_number = 1
-        logger.info(f"会话 {self.conversation_id} 的对话历史已重置")
+        logger.info(f"会话 {self.session_id} 的对话历史已重置")
 
     async def clear_session(self):
         """清除整个会话（从数据库中删除）"""
-        if self.conversation_id and self.session_service:
-            success = self.session_service.delete_session(self.conversation_id)
+        if self.session_id and self.session_service:
+            success = self.session_service.delete_session(self.session_id)
             if success:
                 await self.reset_history()
-                logger.info(f"会话 {self.conversation_id} 已完全清除")
+                logger.info(f"会话 {self.session_id} 已完全清除")
             else:
-                logger.error(f"清除会话 {self.conversation_id} 失败")
+                logger.error(f"清除会话 {self.session_id} 失败")
 
     async def close(self):
         """关闭连接"""
         self._initialized = False
-        logger.info(f"ConversationManager 已关闭, conversation_id: {self.conversation_id}")
+        logger.info(f"SessionManager 已关闭, session_id: {self.session_id}")
 
     async def __aenter__(self):
         return await self.initialize()
