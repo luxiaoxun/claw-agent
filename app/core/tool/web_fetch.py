@@ -1,5 +1,5 @@
 """
-WebFetch Tool - Fetch web content for LangChain
+WebFetch Tool - Fetch web content
 
 Fetches content from URLs with support for:
 - HTML to Markdown/Text conversion

@@ -117,23 +117,26 @@
         // API 基础 URL
         const API_BASE_URL = "http://localhost:5000/api";
 
-        // 保存会话ID到localStorage
+        // 清除保存的会话ID（页面加载时调用，确保全新会话）
+        function clearSavedSessionId() {
+            localStorage.removeItem('last_session_id');
+            console.log("已清除保存的会话ID，开始全新会话");
+        }
+
+        // 保存会话ID到localStorage（已禁用）
         function saveSessionId(id) {
+            // 不再保存会话ID到localStorage
+            // 保持 sessionId 变量，但不持久化
             if (id) {
-                localStorage.setItem('last_session_id', id);
                 sessionId = id;
-                console.log(`会话ID已保存: ${id}`);
+                console.log(`当前会话ID: ${id}（未持久化）`);
             }
         }
 
-        // 加载保存的会话ID
+        // 加载保存的会话ID（已禁用，始终返回false）
         function loadSavedSessionId() {
-            const savedId = localStorage.getItem('last_session_id');
-            if (savedId) {
-                sessionId = savedId;
-                addMessage("系统", `恢复上次会话: ${savedId.substring(0, 8)}...`, "system");
-                return true;
-            }
+            // 不再加载任何保存的会话ID，始终返回false表示无保存会话
+            console.log("已禁用会话恢复，将创建全新会话");
             return false;
         }
 
@@ -154,9 +157,9 @@
             }
         }
 
-        // 新建会话 - 刷新页面
+        // 新建会话 - 刷新页面（确保全新会话）
         function newSession() {
-            if (confirm("确定要创建新会话吗？当前会话将被保存，页面将刷新以开始新对话。")) {
+            if (confirm("确定要创建新会话吗？当前会话将被清除，页面将刷新以开始全新对话。")) {
                 // 清除保存的会话ID
                 localStorage.removeItem('last_session_id');
                 
@@ -204,7 +207,7 @@
                                 if (data.session_id) {
                                     sessionId = data.session_id;
                                     saveSessionId(sessionId);
-                                    addMessage("系统", `会话ID: ${sessionId.substring(0, 8)}...`, "system");
+                                    addMessage("系统", `新会话ID: ${sessionId.substring(0, 8)}...（本次会话）`, "system");
                                 }
                                 break;
                                 
@@ -366,9 +369,10 @@
             return div.innerHTML;
         }
         
-        // 页面加载时初始化
-        console.log("页面加载，初始化...");
-        loadSavedSessionId();
+        // 页面加载时初始化 - 始终创建全新会话
+        console.log("页面加载，初始化全新会话...");
+        clearSavedSessionId();  // 清除可能残留的会话ID
+        // loadSavedSessionId 已禁用，不再尝试恢复会话
         connect();
         
         // 支持回车发送

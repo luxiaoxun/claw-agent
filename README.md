@@ -1,11 +1,12 @@
 # Claw Agent
 
-一个基于LangChain的AI Agent
+一个简单的AI Agent
 
 ## 功能特性
 
 ### 内置工具
-- 文件读写
+- 文件读写、编辑、查找
+- DOC/PDF文档转换
 - 命令执行
 - 网页获取
 
