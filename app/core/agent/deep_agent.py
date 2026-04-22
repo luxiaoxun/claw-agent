@@ -188,15 +188,14 @@ class DeepAgent:
                 # 处理工具调用开始
                 if event_type == "on_tool_start":
                     tool_name = event.get("name", "unknown")
-                    tool_input = event.get("data", {}).get("input", {})
-                    logger.info(f"工具调用开始: {tool_name}")
-
+                    tool_args = event.get("data", {}).get("input", {})
+                    logger.info(f"工具调用开始: {tool_name}, {tool_args}")
                     # 根据配置决定是否输出工具调用信息
                     if settings.MSG_TOOL_OUTPUT_ENABLED:
                         yield {
                             "type": "tool_call",
                             "tool_name": tool_name,
-                            "tool_args": tool_input
+                            "tool_args": tool_args
                         }
 
                 # 处理工具调用结束
@@ -204,20 +203,19 @@ class DeepAgent:
                     tool_name = event.get("name", "unknown")
                     tool_output = event.get("data", {}).get("output")
                     logger.info(f"工具调用结束: {tool_name}")
-
                     # 根据配置决定是否输出工具结果信息
                     if settings.MSG_TOOL_OUTPUT_ENABLED:
                         yield {
                             "type": "tool_result",
                             "tool_name": tool_name,
-                            "result": str(tool_output) if tool_output else "无输出",
+                            "result": str(tool_output) if tool_output else "Tool no output",
                             "status": "success"
                         }
 
                 # 处理工具错误
                 elif event_type == "on_tool_error":
                     tool_name = event.get("name", "unknown")
-                    error = event.get("data", {}).get("error", "未知错误")
+                    error = event.get("data", {}).get("error", "Unknown error")
                     logger.error(f"工具调用错误: {tool_name} - {error}")
 
                     # 根据配置决定是否输出工具错误信息
@@ -233,15 +231,12 @@ class DeepAgent:
                 elif event_type == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if chunk:
-                        # 获取内容
                         content = None
                         if hasattr(chunk, "content") and chunk.content:
                             content = chunk.content
                         elif isinstance(chunk, dict) and "content" in chunk:
                             content = chunk["content"]
-
                         if content:
-                            logger.debug(f"LLM 输出块: {content[:50]}...")
                             yield {
                                 "type": "content",
                                 "content": content

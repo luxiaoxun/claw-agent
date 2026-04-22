@@ -172,7 +172,7 @@ class WebSocketConnectionManager:
             # 重新加载历史记录
             await manager.load_history()
             logger.info(
-                f"客户端 {client_id} 重新加载了会话 {manager.session_id} 的历史，共 {len(manager.conversation_history)} 条消息")
+                f"客户端 {client_id} 重新加载了会话 {manager.session_id} 的历史，共 {len(manager.chat_history)} 条消息")
         except Exception as e:
             logger.error(f"重新加载客户端 {client_id} 的会话历史失败: {str(e)}")
             raise
