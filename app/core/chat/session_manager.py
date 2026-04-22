@@ -23,10 +23,6 @@ class SessionManager:
         # 聊天记忆管理器
         self.memory_manager = ChatMemoryManager(session_id, user_id)
 
-        # 流式处理相关
-        self._current_stream_response = ""
-        self._streaming_tool_calls = []
-
         # 初始化标志
         self._initialized = False
 
@@ -156,9 +152,7 @@ class SessionManager:
 
         try:
             # 重置流式状态
-            self._current_stream_response = ""
-            self._streaming_tool_calls = []
-
+            current_stream_response = ""
             chunk_count = 0
             all_messages = []  # 收集完整的消息链
 
@@ -197,7 +191,7 @@ class SessionManager:
                     elif chunk_type == "content":
                         content_chunk = chunk.get("content", "")
                         if content_chunk:
-                            self._current_stream_response += content_chunk
+                            current_stream_response += content_chunk
                             yield {
                                 "type": "content",
                                 "content": content_chunk
@@ -216,16 +210,16 @@ class SessionManager:
                 else:
                     logger.warning(f"非字典类型的 chunk: {type(chunk)} - {chunk}")
 
-            logger.info(f"流式处理完成，共收到 {chunk_count} 个 chunks，总响应长度: {len(self._current_stream_response)}")
+            logger.info(f"流式处理完成，共收到 {chunk_count} 个 chunks，总响应长度: {len(current_stream_response)}")
 
             # 流式处理完成后，保存当前对话轮次
-            if self._current_stream_response:
-                await self._save_current_round(message, self._current_stream_response, all_messages)
+            if current_stream_response:
+                await self._save_current_round(message, current_stream_response, all_messages)
 
             # 发送完成信号
             yield {
                 "type": "complete",
-                "full_response": self._current_stream_response
+                "full_response": current_stream_response
             }
 
         except Exception as e:
