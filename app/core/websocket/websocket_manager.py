@@ -45,18 +45,21 @@ class WebSocketConnectionManager:
         logger.info(f"WebSocket 客户端 {client_id} 已连接")
         return client_id
 
-    async def initialize_manager(self, client_id: str, session_id: str = None,
-                                 user_id: str = None) -> SessionManager:
+    async def get_or_create_session_manager(self, client_id: str, session_id: str = None,
+                                            user_id: str = None) -> SessionManager:
         """
-        初始化客户端的会话管理器（异步）
+        获取或创建会话管理器
+
+        当 session_id 为 None 时，创建新的会话管理器
+        当 session_id 有值时，查找已存在的会话管理器，如果不存在则创建新的
 
         Args:
             client_id: 客户端ID
-            session_id: 会话ID（可选）
+            session_id: 会话ID（可以为 None）
             user_id: 用户ID（可选）
 
         Returns:
-            SessionManager: 初始化后的会话管理器
+            SessionManager: 会话管理器实例
         """
         conn = self.active_connections.get(client_id)
         if not conn:
@@ -64,29 +67,75 @@ class WebSocketConnectionManager:
 
         session_manager = conn["session_manager"]
 
-        # 如果已经初始化且 session_id 相同，直接返回
-        if conn.get("initialized") and session_manager.session_id == session_id:
-            logger.debug(f"客户端 {client_id} 的会话管理器已初始化，session_id: {session_id}")
-            return session_manager
+        # 情况1: session_id 为 None，创建新的会话管理器
+        if session_id is None:
+            # 检查当前是否已经有初始化的会话管理器
+            if conn.get("initialized"):
+                # 如果已经初始化，关闭旧的会话管理器
+                try:
+                    await session_manager.close()
+                    logger.info(f"关闭旧的会话管理器，session_id: {conn['session_id']}")
+                except Exception as e:
+                    logger.error(f"关闭旧会话管理器失败: {str(e)}")
 
-        # 初始化会话管理器
-        try:
-            await session_manager.initialize(
-                session_id=session_id,
-                user_id=user_id
-            )
+            # 创建新的会话管理器
+            new_session_id = str(uuid.uuid4())
+            new_session_manager = SessionManager()
+            try:
+                await new_session_manager.initialize(
+                    session_id=new_session_id,
+                    user_id=user_id
+                )
 
-            # 更新连接信息
-            conn["session_id"] = session_manager.session_id
-            conn["user_id"] = user_id
-            conn["initialized"] = True
+                # 更新连接信息
+                conn["session_manager"] = new_session_manager
+                conn["session_id"] = new_session_manager.session_id
+                conn["user_id"] = user_id
+                conn["initialized"] = True
 
-            logger.info(f"客户端 {client_id} 的会话管理器已初始化，session_id: {session_manager.session_id}")
-            return session_manager
+                logger.info(f"为客户端 {client_id} 创建新会话，session_id: {new_session_manager.session_id}")
+                return new_session_manager
 
-        except Exception as e:
-            logger.error(f"初始化客户端 {client_id} 的会话管理器失败: {str(e)}")
-            raise
+            except Exception as e:
+                logger.error(f"创建新会话管理器失败: {str(e)}")
+                raise
+
+        # 情况2: session_id 有值，查找已存在的会话管理器
+        else:
+            # 检查当前会话管理器是否已经初始化且 session_id 匹配
+            if conn.get("initialized") and conn["session_id"] == session_id:
+                logger.debug(f"找到已存在的会话管理器，session_id: {session_id}")
+                return session_manager
+
+            # 未初始化或 session_id 不匹配，创建新的会话管理器
+            # 先关闭旧的（如果存在）
+            if conn.get("initialized"):
+                try:
+                    await session_manager.close()
+                    logger.info(f"关闭旧的会话管理器，session_id: {conn['session_id']}")
+                except Exception as e:
+                    logger.error(f"关闭旧会话管理器失败: {str(e)}")
+
+            # 创建新的会话管理器
+            new_session_manager = SessionManager()
+            try:
+                await new_session_manager.initialize(
+                    session_id=session_id,
+                    user_id=user_id
+                )
+
+                # 更新连接信息
+                conn["session_manager"] = new_session_manager
+                conn["session_id"] = new_session_manager.session_id
+                conn["user_id"] = user_id
+                conn["initialized"] = True
+
+                logger.info(f"为客户端 {client_id} 创建指定会话，session_id: {new_session_manager.session_id}")
+                return new_session_manager
+
+            except Exception as e:
+                logger.error(f"创建指定会话管理器失败: {str(e)}")
+                raise
 
     def disconnect(self, client_id: str):
         """断开连接（同步版本，仅移除连接，不清理资源）"""
@@ -116,38 +165,6 @@ class WebSocketConnectionManager:
 
             del self.active_connections[client_id]
             logger.info(f"WebSocket 客户端 {client_id} 已断开并清理资源")
-
-    async def get_session_manager(self, client_id: str, session_id: str, user_id: str) -> Optional[SessionManager]:
-        """获取客户端的会话管理器"""
-        conn = self.active_connections.get(client_id)
-        if conn:
-            session_manager = conn.get("session_manager")
-            if session_manager:
-                return session_manager
-            else:
-                # 创建新的会话管理器
-                session_manager = SessionManager(session_id=session_id, user_id=user_id)
-                # 初始化会话管理器
-                try:
-                    await session_manager.initialize(
-                        session_id=session_id,
-                        user_id=user_id
-                    )
-
-                    # 更新连接信息
-                    conn["session_id"] = session_manager.session_id
-                    conn["user_id"] = user_id
-                    conn["initialized"] = True
-
-                    logger.info(f"客户端 {client_id} 的会话管理器已初始化，session_id: {session_manager.session_id}")
-                    return session_manager
-
-                except Exception as e:
-                    logger.error(f"初始化客户端 {client_id} 的会话管理器失败: {str(e)}")
-                    raise
-        else:
-            logger.error(f"找不到对应的客户端连接： {client_id}")
-            raise ValueError(f"客户端 {client_id} 不存在")
 
     def get_websocket(self, client_id: str) -> Optional[WebSocket]:
         """获取客户端的 WebSocket 连接"""

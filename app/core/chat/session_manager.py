@@ -238,16 +238,6 @@ class SessionManager:
         self.memory_manager.reset_history()
         logger.info(f"会话 {self.session_id} 的对话历史已重置")
 
-    async def clear_session(self):
-        """清除整个会话（从数据库中删除）"""
-        if self.session_id and self.session_service:
-            success = self.session_service.delete_session(self.session_id)
-            if success:
-                await self.reset_history()
-                logger.info(f"会话 {self.session_id} 已完全清除")
-            else:
-                logger.error(f"清除会话 {self.session_id} 失败")
-
     async def close(self):
         """关闭连接"""
         self._initialized = False
@@ -258,7 +248,3 @@ class SessionManager:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
-
-    def get_tools_info(self) -> List[dict]:
-        """获取工具信息"""
-        return agent_manager.get_tools_info()

@@ -37,7 +37,6 @@ async def chat(request: Request):
             response = await session_manager.process_message(message)
         except Exception as e:
             logger.error(f"处理消息时异步执行错误: {str(e)}")
-            traceback.print_exc()
             return fail_response(message=f"处理消息失败: {str(e)}")
 
         # 解析response字符串为JSON对象
@@ -56,7 +55,6 @@ async def chat(request: Request):
 
     except Exception as e:
         logger.error(f"处理聊天请求时出错: {str(e)}")
-        traceback.print_exc()
         return fail_response(message=f"处理请求失败: {str(e)}")
     finally:
         # 确保关闭对话管理器
@@ -96,7 +94,6 @@ async def reset(request: Request):
 
     except Exception as e:
         logger.error(f"重置对话历史时出错: {str(e)}")
-        traceback.print_exc()
         return fail_response(message=f"重置失败: {str(e)}")
     finally:
         # 确保关闭对话管理器
@@ -127,7 +124,7 @@ async def websocket_chat(websocket: WebSocket):
             try:
                 message_data = json.loads(data)
                 user_message = message_data.get('message', '')
-                session_id = message_data.get('session_id')
+                session_id = message_data.get('session_id')  # 从消息中获取session_id
                 user_id = message_data.get('user_id')
 
                 if not user_message:
@@ -137,26 +134,19 @@ async def websocket_chat(websocket: WebSocket):
                     })
                     continue
 
-                # 新会话
-                if not session_id:
-                    session_id = str(uuid.uuid4())
-                    session_manager = await ws_connection_manager.initialize_manager(
-                        client_id=client_id,
-                        session_id=session_id,
-                        user_id=user_id
-                    )
+                # 获取或创建会话管理器
+                session_manager = await ws_connection_manager.get_or_create_session_manager(
+                    client_id=client_id,
+                    session_id=session_id,
+                    user_id=user_id
+                )
 
-                    # 发送会话ID给前端
+                # 如果是新创建的会话，发送会话ID给前端
+                if session_id is None:
                     await websocket.send_json({
                         "type": "session",
-                        "session_id": session_id
+                        "session_id": session_manager.session_id
                     })
-                else:
-                    session_manager = await ws_connection_manager.get_session_manager(
-                        client_id=client_id,
-                        session_id=session_id,
-                        user_id=user_id
-                    )
 
                 logger.info(
                     f"WebSocket 处理消息: {user_message[:100]}..., session_id: {session_manager.session_id}")
@@ -230,5 +220,4 @@ async def websocket_chat(websocket: WebSocket):
         await ws_connection_manager.disconnect_and_cleanup(client_id)
     except Exception as e:
         logger.error(f"WebSocket 连接异常: {str(e)}")
-        traceback.print_exc()
         await ws_connection_manager.disconnect_and_cleanup(client_id)
