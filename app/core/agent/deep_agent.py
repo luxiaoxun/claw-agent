@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Optional
 from langchain.agents import create_agent
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
-from core.skill.skill_loader import SkillLoader
+from core.skill.skill_manager import SkillManager
 from core.tool.mcp.mcp_client import MCPClientManager
 from core.tool import file_read, file_write, file_edit, file_search, command_execute, doc_parser, search_data, web_fetch
 from config.settings import settings
@@ -18,7 +18,7 @@ class DeepAgent:
     """
 
     def __init__(self, workspace_dir):
-        self.skill_loader = SkillLoader(os.path.join(workspace_dir, "skills"))
+        self.skill_loader = SkillManager(os.path.join(workspace_dir, "skills"))
         self.skill_loader.load_all_skills()
 
         # 基础工具（始终可用）

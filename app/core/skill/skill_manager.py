@@ -18,9 +18,9 @@ class SkillMetadata:
     has_assets: bool = False
 
 
-class SkillLoader:
+class SkillManager:
     """
-    Skill加载器
+    Skill管理
     扫描skills目录，加载每个skill的元数据
     """
 
