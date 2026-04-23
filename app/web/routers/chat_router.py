@@ -195,7 +195,7 @@ async def websocket_chat(websocket: WebSocket):
                     elif chunk_type == "error":
                         await websocket.send_json({
                             "type": "error",
-                            "error": chunk.get("content", "未知错误")
+                            "error": chunk.get("content", "Unknown error")
                         })
                         break
 
@@ -213,14 +213,14 @@ async def websocket_chat(websocket: WebSocket):
             except json.JSONDecodeError:
                 await websocket.send_json({
                     "type": "error",
-                    "error": "无效的 JSON 格式"
+                    "error": "Invalid JSON data"
                 })
             except Exception as e:
                 logger.error(f"处理 WebSocket 消息时出错: {str(e)}")
                 traceback.print_exc()
                 await websocket.send_json({
                     "type": "error",
-                    "error": f"处理消息失败: {str(e)}"
+                    "error": f"Process message error: {str(e)}"
                 })
 
     except WebSocketDisconnect:

@@ -1,9 +1,10 @@
 # core/chat/session_manager.py
 from typing import List, Dict, Any, Optional
-from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
 from core.agent.agent_manager import agent_manager
 from service.database_service import database_service
 from config.logging_config import get_logger
+from config.settings import settings
 from core.chat.chat_memory_manager import ChatMemoryManager
 
 logger = get_logger(__name__)
@@ -154,7 +155,8 @@ class SessionManager:
             # 重置流式状态
             current_stream_response = ""
             chunk_count = 0
-            all_messages = []  # 收集完整的消息链
+            # 次轮会话中的工具消息
+            tool_messages = []
 
             # 获取用于上下文的最近历史
             context_history = self._get_context_history()
@@ -172,22 +174,26 @@ class SessionManager:
 
                     if chunk_type == "tool_call":
                         logger.debug(f"处理工具调用: {chunk.get('tool_name')}")
-                        yield {
-                            "type": "tool_call",
-                            "tool_name": chunk.get("tool_name"),
-                            "tool_args": chunk.get("tool_args")
-                        }
+                        if settings.MSG_TOOL_OUTPUT_ENABLED:
+                            yield {
+                                "type": "tool_call",
+                                "tool_name": chunk.get("tool_name"),
+                                "tool_args": chunk.get("tool_args")
+                            }
+
                     elif chunk_type == "tool_result":
                         logger.debug(f"处理工具结果: {chunk.get('tool_name')}")
-                        yield {
-                            "type": "tool_result",
-                            "tool_name": chunk.get("tool_name"),
-                            "result": chunk.get("result"),
-                            "status": chunk.get("status", "success")
-                        }
-                        # 收集工具结果消息
-                        if 'message' in chunk:
-                            all_messages.append(chunk['message'])
+                        if settings.MSG_TOOL_OUTPUT_ENABLED:
+                            yield {
+                                "type": "tool_result",
+                                "tool_name": chunk.get("tool_name"),
+                                "result": chunk.get("result"),
+                                "status": chunk.get("status", "success")
+                            }
+                        # 保存当前会话轮次中的工具调用结果
+                        if chunk.get("status") == "success" and chunk.get("message"):
+                            tool_messages.append(chunk['message'])
+
                     elif chunk_type == "content":
                         content_chunk = chunk.get("content", "")
                         if content_chunk:
@@ -196,15 +202,13 @@ class SessionManager:
                                 "type": "content",
                                 "content": content_chunk
                             }
+
                     elif chunk_type == "error":
                         logger.error(f"处理错误: {chunk.get('error')}")
                         yield {
                             "type": "error",
                             "content": chunk.get("error", "未知错误")
                         }
-                    elif chunk_type == "complete" and 'messages' in chunk:
-                        # 收集完整的消息链
-                        all_messages = chunk.get('messages', [])
                     else:
                         logger.warning(f"未知的 chunk 类型: {chunk_type}")
                 else:
@@ -214,7 +218,7 @@ class SessionManager:
 
             # 流式处理完成后，保存当前对话轮次
             if current_stream_response:
-                await self._save_current_round(message, current_stream_response, all_messages)
+                await self._save_current_round(message, current_stream_response, tool_messages)
 
             # 发送完成信号
             yield {
