@@ -55,9 +55,8 @@ class Settings(BaseSettings):
     ES_TIMEOUT: int = int(os.getenv("ES_TIMEOUT", "30"))
     ES_MAX_RESULTS: int = int(os.getenv("ES_MAX_RESULTS", "100"))
 
-    # Agent配置
-    AGENT_MAX_ITERATIONS: int = 10
-    MSG_MAX_HISTORY_LENGTH: int = 10
+    # Message配置
+    MSG_MAX_HISTORY_LENGTH: int = 5
     MSG_TOOL_OUTPUT_ENABLED: bool = os.getenv("MSG_TOOL_OUTPUT_ENABLED", "true").lower() == "true"
 
     # 安全配置

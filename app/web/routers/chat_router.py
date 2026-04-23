@@ -137,24 +137,26 @@ async def websocket_chat(websocket: WebSocket):
                     })
                     continue
 
-                # 使用 WebSocketConnectionManager 管理会话
-                session_manager = await ws_connection_manager.initialize_manager(
-                    client_id=client_id,
-                    session_id=session_id,
-                    user_id=user_id
-                )
-
-                # 确保有会话ID（如果还是没有，生成一个新的）
-                if not session_manager.session_id:
-                    new_session_id = str(uuid.uuid4())
-                    await ws_connection_manager.update_session_id(client_id, new_session_id)
-                    session_manager = ws_connection_manager.get_manager(client_id)
+                # 新会话
+                if not session_id:
+                    session_id = str(uuid.uuid4())
+                    session_manager = await ws_connection_manager.initialize_manager(
+                        client_id=client_id,
+                        session_id=session_id,
+                        user_id=user_id
+                    )
 
                     # 发送会话ID给前端
                     await websocket.send_json({
                         "type": "session",
-                        "session_id": new_session_id
+                        "session_id": session_id
                     })
+                else:
+                    session_manager = await ws_connection_manager.get_session_manager(
+                        client_id=client_id,
+                        session_id=session_id,
+                        user_id=user_id
+                    )
 
                 logger.info(
                     f"WebSocket 处理消息: {user_message[:100]}..., session_id: {session_manager.session_id}")
