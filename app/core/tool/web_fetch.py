@@ -269,24 +269,6 @@ def web_fetch(
         return f"Error: Request failed - {str(e)}"
 
 
-# 创建一个可调用的包装函数用于直接测试
-def web_fetch_callable(
-        url: str,
-        format: str = "markdown",
-        timeout: Optional[int] = DEFAULT_TIMEOUT,
-) -> str:
-    """
-    可调用的包装函数，用于直接测试。
-    这个函数可以像普通函数一样直接调用。
-    """
-    # 调用 LangChain tool 的 invoke 方法
-    return web_fetch.invoke({
-        "url": url,
-        "format": format,
-        "timeout": timeout
-    })
-
-
 # Usage example
 if __name__ == "__main__":
     print("=" * 80)
@@ -302,13 +284,8 @@ if __name__ == "__main__":
     })
     print(result[:500])
 
-    # 方法2: 使用包装函数直接调用
-    print("\n2. Testing with wrapper function:")
-    result = web_fetch_callable("https://www.baidu.com", format="text", timeout=10)
-    print(result[:500])
-
-    # 方法3: 测试 markdown 格式
-    print("\n3. Testing with markdown format:")
+    # 方法2: 测试 markdown 格式
+    print("\n2. Testing with markdown format:")
     result = web_fetch.invoke({
         "url": "https://example.com",
         "format": "markdown",
@@ -316,8 +293,8 @@ if __name__ == "__main__":
     })
     print(result[:500])
 
-    # 方法4: 测试错误处理
-    print("\n4. Testing error handling:")
+    # 方法3: 测试错误处理
+    print("\n3. Testing error handling:")
     result = web_fetch.invoke({
         "url": "invalid-url",
         "format": "text"

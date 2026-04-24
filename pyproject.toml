@@ -30,6 +30,7 @@ dependencies = [
     "loguru==0.7.2",
     "python-dotenv==1.0.1",
     "python-frontmatter==1.1.0",
+    "ddgs==9.14.1",
     # docs parser
     "pymupdf==1.27.2.2",
     "olefile==0.47",

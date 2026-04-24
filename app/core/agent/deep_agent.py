@@ -5,7 +5,8 @@ from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
 from core.skill.skill_manager import SkillManager
 from core.tool.mcp.mcp_client import MCPClientManager
-from core.tool import file_read, file_write, file_edit, file_search, command_execute, doc_parser, search_data, web_fetch
+from core.tool import file_read, file_write, file_edit, file_search, command_execute, doc_parser, search_data, \
+    web_fetch, web_search
 from config.settings import settings
 from config.logging_config import get_logger
 
@@ -23,7 +24,7 @@ class DeepAgent:
 
         # 基础工具（始终可用）
         self.base_tools = [file_read, file_write, file_edit, file_search, command_execute, doc_parser, web_fetch,
-                           search_data]
+                           web_search, search_data]
 
         # MCP相关
         self.mcp_manager: Optional[MCPClientManager] = None
@@ -105,7 +106,7 @@ class DeepAgent:
 
     **重要：你需要按照以下步骤工作：**
 
-    ### 第一步：选择技能
+    ### 第一步：选择技能或工具
     分析用户的问题，判断应该使用哪个技能来处理。你需要从下面的技能列表中选择最合适的技能。如果找不到合适的技能或工具，就基于内置知识和对用户提供内容的理解进行回答，不可以随便瞎编答案。
 
     ### 第二步：加载技能
@@ -122,9 +123,18 @@ class DeepAgent:
     严格按照技能文件中定义的输出格式返回结果。
 
     ## 注意事项
-    - **必须**先加载技能文件，再执行任务
+    - 必须先加载技能工具，再执行任务
     - 技能文件中的指令优先级最高
     - 严格按照技能文件要求的格式返回结果
+
+    ## 可用工具列表
+    - file_read: Read file contents
+    - file_write: Write to file
+    - file_edit: Edit existing file
+    - command_execute: Execute command or script
+    - web_search: Search the web
+    - web_fetch: Fetch URL content
+    - doc_parser: Parses PDF/Word documents to Markdown
 
     ## 可用技能列表
 
