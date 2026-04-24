@@ -54,8 +54,8 @@ class AgentPrompt:
     严格按照技能文件中定义的输出格式返回结果。
 
     ## 注意事项
-    - 必须先加载技能工具，再执行任务
-    - 技能文件中的指令优先级最高
+    - 先加载技能工具，再执行任务
+    - 技能文件中的工具指令优先级最高
     - 严格按照技能文件要求的格式返回结果
 
     ## 可用工具列表
@@ -68,9 +68,7 @@ class AgentPrompt:
     - doc_parser: Parses PDF/Word documents to Markdown
 
     ## 可用技能列表
-
     以下是所有可用的技能，每个技能都有特定的用途：
-
     """
         for skill in all_skills:
             prompt += f"- **{skill['name']}**: {skill['description']}\n"
