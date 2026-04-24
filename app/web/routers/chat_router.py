@@ -62,45 +62,6 @@ async def chat(request: Request):
             await session_manager.close()
 
 
-@router.post("/reset")
-async def reset(request: Request):
-    """
-    重置当前会话的对话历史
-    仅重置内存中的历史记录，不删除数据库中的持久化数据
-    """
-    session_manager = None
-    try:
-        # 获取请求体中的 session_id
-        body = await request.json() if await request.body() else {}
-        session_id = body.get('session_id')
-
-        if not session_id:
-            return fail_response(message="会话ID不能为空")
-
-        # 创建对话管理器
-        session_manager = SessionManager(session_id=session_id)
-        await session_manager.initialize()
-
-        # 重置历史记录
-        await session_manager.reset_history()
-
-        logger.info(f"对话历史已重置, session_id: {session_manager.session_id}")
-
-        return success_response(
-            data={
-                "session_id": session_manager.session_id
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"重置对话历史时出错: {str(e)}")
-        return fail_response(message=f"重置失败: {str(e)}")
-    finally:
-        # 确保关闭对话管理器
-        if session_manager:
-            await session_manager.close()
-
-
 @router.websocket("/ws/message")
 async def websocket_chat(websocket: WebSocket):
     """WebSocket 聊天端点 - 支持流式响应"""

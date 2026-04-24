@@ -28,11 +28,6 @@ class SessionManager:
         self._initialized = False
 
     @property
-    def chat_history(self) -> List[Dict]:
-        """向后兼容：提供chat_history属性访问"""
-        return self.memory_manager.chat_history
-
-    @property
     def deep_agent(self):
         """通过 AgentManager 获取共享的 Agent 实例"""
         return agent_manager.get_agent()
@@ -233,13 +228,9 @@ class SessionManager:
                 "content": f"处理消息时出错: {str(e)}"
             }
 
-    async def reset_history(self):
-        """重置当前会话的对话历史（只重置内存，不清除数据库）"""
-        self.memory_manager.reset_history()
-        logger.info(f"会话 {self.session_id} 的对话历史已重置")
-
     async def close(self):
         """关闭连接"""
+        self.memory_manager.reset_history()
         self._initialized = False
         logger.info(f"SessionManager 已关闭, session_id: {self.session_id}")
 
