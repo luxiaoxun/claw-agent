@@ -1,3 +1,4 @@
+# core/agent/deep_agent.py
 import os
 from typing import Dict, Any, List, Optional
 from langchain.agents import create_agent
@@ -7,6 +8,7 @@ from core.skill.skill_manager import SkillManager
 from core.tool.mcp.mcp_client import MCPClientManager
 from core.tool import file_read, file_write, file_edit, file_search, command_execute, doc_parser, search_data, \
     web_fetch, web_search
+from core.agent.agent_prompt import AgentPrompt
 from config.settings import settings
 from config.logging_config import get_logger
 
@@ -35,6 +37,9 @@ class DeepAgent:
         self.llm: Optional[BaseChatModel] = None
         self.agent = None  # Runnable agent
         self.system_prompt: Optional[str] = None
+
+        # 提示词管理器
+        self.prompt_manager = AgentPrompt(self.skill_loader)
 
     async def initialize(self):
         """初始化Agent"""
@@ -98,60 +103,14 @@ class DeepAgent:
 
     def _build_base_system_prompt(self):
         """构建基础系统提示词"""
-        all_skills = self.skill_loader.get_all_skill_descriptions()
-
-        prompt = f"""你是一个智能助手，能够处理各种数据查询和分析任务。
-
-    ## 工作流程
-
-    **重要：你需要按照以下步骤工作：**
-
-    ### 第一步：选择技能或工具
-    分析用户的问题，判断应该使用哪个技能来处理。你需要从下面的技能列表中选择最合适的技能。如果找不到合适的技能或工具，就基于内置知识和对用户提供内容的理解进行回答，不可以随便瞎编答案。
-
-    ### 第二步：加载技能
-    使用 `file_read` 工具读取选中技能的 SKILL.md 文件。
-    - 格式: `{{"path": "SKILL.md", "skill_name": "技能名称"}}`
-
-    ### 第三步：执行任务
-    技能文件会告诉你：
-    - 这个技能的具体作用
-    - 如何使用（是否需要调用工具）
-    - 返回结果的格式要求
-
-    ### 第四步：返回结果
-    严格按照技能文件中定义的输出格式返回结果。
-
-    ## 注意事项
-    - 必须先加载技能工具，再执行任务
-    - 技能文件中的指令优先级最高
-    - 严格按照技能文件要求的格式返回结果
-
-    ## 可用工具列表
-    - file_read: Read file contents
-    - file_write: Write to file
-    - file_edit: Edit existing file
-    - command_execute: Execute command or script
-    - web_search: Search the web
-    - web_fetch: Fetch URL content
-    - doc_parser: Parses PDF/Word documents to Markdown
-
-    ## 可用技能列表
-
-    以下是所有可用的技能，每个技能都有特定的用途：
-
-    """
-        for skill in all_skills:
-            prompt += f"- **{skill['name']}**: {skill['description']}\n"
-
-        self.system_prompt = prompt
+        self.system_prompt = self.prompt_manager.build_base_system_prompt()
 
     async def process(self, message: str, chat_history: Optional[List[BaseMessage]] = None) -> Dict[str, Any]:
         """
         处理用户消息（非流式）
 
         Returns:
-            包含 messages 列表的字典，符合 LangChain 1.0 标准
+            包含 messages 列表的字典
         """
         if not self.agent:
             raise RuntimeError("Agent未初始化")

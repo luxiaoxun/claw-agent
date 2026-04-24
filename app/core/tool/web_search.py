@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 class WebSearchInput(BaseModel):
     """Web搜索工具的输入参数模型"""
     query: str = Field(
-        description="搜索关键词，如: '东南大学' 或 'Python教程'"
+        description="搜索关键词，如: 'APT攻击' 或 'Python教程'"
     )
     max_results: int = Field(
         default=10,
@@ -24,13 +24,13 @@ class WebSearchInput(BaseModel):
 
 
 @tool("web_search", args_schema=WebSearchInput)
-async def web_search(
+def web_search(
         query: str,
         max_results: int = 10,
         timeout: int = 30
 ) -> Dict[str, Any]:
     """
-    Search the web using web search engine.
+    Search information using web search engine.
 
     This tool performs web searches and returns relevant results including titles, URLs, and snippets.
     Useful for finding current information, news, documentation, and general web content.
@@ -39,17 +39,19 @@ async def web_search(
         Search for information on the web based on keywords. Results include title, URL, and body text.
 
     Args:
-        query: Search keywords, e.g., '东南大学' or 'Python tutorial'
+        query: Search keywords, e.g., 'APT attack' or 'Python tutorial'
         max_results: Maximum number of results to return, range 1-50, default 10
         timeout: Request timeout in seconds, default 30
     """
     try:
         logger.info(f"Web search - query: '{query}', max_results: {max_results}, timeout: {timeout}s")
 
-        # 固定参数（使用默认值）
-        region = "wt-wt"  # 全球搜索
-        safesearch = "off"  # 关闭安全搜索
-        timelimit = "y"  # 过去一年的内容
+        # region: Search region, e.g., cn-zh(China), us-en(USA), uk-en(UK), wt-wt(global)
+        # safesearch: Safesearch level: off(off), moderate(moderate), strict(strict)
+        # timelimit: Timelimit: d(day), w(week), m(month), y(year), None(unlimited)
+        region = "wt-wt"
+        safesearch = "moderate"
+        timelimit = "y"
 
         # 参数验证
         if max_results < 1 or max_results > 50:
@@ -68,7 +70,8 @@ async def web_search(
                     query,
                     region=region,
                     safesearch=safesearch,
-                    timelimit=timelimit
+                    timelimit=timelimit,
+                    max_results=max_results
                 )
                 for r in islice(ddgs_gen, max_results):
                     results.append(r)
@@ -131,7 +134,7 @@ async def web_search(
 
 
 if __name__ == "__main__":
-    result = web_search.invoke("东南大学", max_results=5)
+    result = web_search.invoke("APT攻击", max_results=10)
     print(f"搜索完成: {result['total_results']} 个结果")
     for r in result['results']:
         print(f"\n标题: {r['title']}")
