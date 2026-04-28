@@ -4,6 +4,7 @@ from typing import List, Dict, Optional, Any
 from config.logging_config import get_logger
 from core.model.db_model import SessionModel, MessageModel
 from service.database_manager import DatabaseManager
+from utils.message_handler import MessageHandler
 
 logger = get_logger(__name__)
 
@@ -22,17 +23,6 @@ class MessageService:
                            meta_data: Optional[Dict] = None) -> Optional[int]:
         """
         保存一次完整的对话轮次
-
-        Args:
-            session_id: 会话ID
-            user_message: 用户消息
-            ai_response: AI响应
-            message_chain: 完整的消息链（LangChain消息对象列表）
-            round_number: 轮次序号
-            meta_data: 元数据
-
-        Returns:
-            保存的记录ID，失败返回None
         """
         session = self.db_manager.get_session()
         try:
@@ -42,7 +32,6 @@ class MessageService:
             ).first()
 
             if not db_session:
-                # 自动创建会话
                 db_session = SessionModel(
                     session_id=session_id,
                     title=f"会话_{session_id[:8]}"
@@ -50,9 +39,9 @@ class MessageService:
                 session.add(db_session)
                 session.flush()
 
-            # 转换消息链为可存储的JSON格式
+            # 使用序列化器转换消息链
             logger.info("开始序列化消息链...")
-            message_chain_json = self._serialize_message_chain(message_chain)
+            message_chain_json = MessageHandler.serialize(message_chain)
             logger.info(f"序列化完成，共 {len(message_chain_json)} 条消息")
 
             # 创建消息轮次记录
@@ -76,7 +65,7 @@ class MessageService:
 
         except Exception as e:
             session.rollback()
-            logger.error(f"保存对话轮次失败: {str(e)}")
+            logger.error(f"保存对话轮次失败: {str(e)}", exc_info=True)
             return None
         finally:
             session.close()
@@ -136,6 +125,7 @@ class MessageService:
     def _serialize_message_chain(self, messages: List[Any]) -> List[Dict]:
         """
         将 LangChain 消息链序列化为 JSON 可存储格式
+        保存完整的消息流：AIMessage (可带 tool_calls) 和 ToolMessage
         """
         from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
@@ -145,19 +135,33 @@ class MessageService:
             if isinstance(msg, HumanMessage):
                 # HumanMessage 不保存到消息链，因为已经在 user_message 字段中
                 continue
+
             elif isinstance(msg, AIMessage):
                 msg_data = {
                     'type': 'ai',
                     'content': msg.content,
                 }
+                # 保存 tool_calls（关键！）
                 if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    msg_data['tool_calls'] = msg.tool_calls
+                    # 清理 tool_calls 确保可序列化
+                    cleaned_calls = []
+                    for tc in msg.tool_calls:
+                        cleaned_calls.append({
+                            'name': tc.get('name', ''),
+                            'args': tc.get('args', {}),
+                            'id': tc.get('id', '')
+                        })
+                    msg_data['tool_calls'] = cleaned_calls
                 serialized.append(msg_data)
+
             elif isinstance(msg, ToolMessage):
-                serialized.append({
+                msg_data = {
                     'type': 'tool',
                     'content': msg.content,
                     'tool_call_id': msg.tool_call_id
-                })
+                }
+                if hasattr(msg, 'name') and msg.name:
+                    msg_data['name'] = msg.name
+                serialized.append(msg_data)
 
         return serialized

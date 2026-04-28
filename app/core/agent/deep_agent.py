@@ -1,12 +1,13 @@
 # core/agent/deep_agent.py
 from typing import Dict, Any, List, Optional
 from langchain.agents import create_agent
-from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
 from core.tool.mcp.mcp_client import MCPClientManager
 from core.tool import file_read, file_write, file_edit, file_search, command_execute, doc_parser, search_data, \
     web_fetch, web_search
 from core.agent.agent_prompt import AgentPrompt
+from utils.message_handler import MessageHandler
 from config.settings import settings
 from config.logging_config import get_logger
 
@@ -140,8 +141,21 @@ class DeepAgent:
 
         messages = chat_history + [HumanMessage(content=message)]
 
+        # 验证消息链
+        logger.info(f"消息链长度: {len(messages)}")
+        for i, msg in enumerate(messages):
+            logger.debug(f"消息 {i}: {type(msg).__name__} - {str(getattr(msg, 'content', ''))[:50]}")
+            if isinstance(msg, ToolMessage):
+                logger.debug(f"  ToolMessage: tool_call_id={msg.tool_call_id}, name={getattr(msg, 'name', 'N/A')}")
+
         try:
             logger.info("开始流式处理")
+
+            # 收集完整的消息链
+            collected_messages = []
+            # 流式状态
+            pending_content_parts = []
+            pending_tool_calls = {}
 
             async for event in self.agent.astream_events(
                     {"messages": messages},
@@ -149,7 +163,7 @@ class DeepAgent:
             ):
                 event_type = event.get("event")
 
-                # 处理工具调用开始
+                # 工具调用开始
                 if event_type == "on_tool_start":
                     tool_name = event.get("name", "unknown")
                     tool_args = event.get("data", {}).get("input", {})
@@ -160,11 +174,24 @@ class DeepAgent:
                         "tool_args": tool_args
                     }
 
-                # 处理工具调用结束
+                # 工具调用结束
                 elif event_type == "on_tool_end":
                     tool_name = event.get("name", "unknown")
                     tool_output = event.get("data", {}).get("output")
                     logger.info(f"工具调用结束: {tool_name}")
+
+                    # 保存之前的 AIMessage
+                    if pending_content_parts or pending_tool_calls:
+                        ai_msg = MessageHandler.build_ai_message(pending_content_parts, pending_tool_calls)
+                        if ai_msg:
+                            collected_messages.append(ai_msg)
+                        pending_content_parts = []
+                        pending_tool_calls = {}
+
+                    # 收集 ToolMessage
+                    if tool_output and isinstance(tool_output, ToolMessage):
+                        collected_messages.append(tool_output)
+
                     yield {
                         "type": "tool_result",
                         "tool_name": tool_name,
@@ -173,7 +200,7 @@ class DeepAgent:
                         "message": tool_output
                     }
 
-                # 处理工具错误
+                # 工具错误
                 elif event_type == "on_tool_error":
                     tool_name = event.get("name", "unknown")
                     error = event.get("data", {}).get("error", "Unknown error")
@@ -185,29 +212,54 @@ class DeepAgent:
                         "status": "error"
                     }
 
-                # 处理 LLM 流式输出（内容）- 始终输出，不受配置控制
+                # LLM 流式输出
                 elif event_type == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
                     if chunk:
-                        content = None
+                        # 处理内容
                         if hasattr(chunk, "content") and chunk.content:
-                            content = chunk.content
-                        elif isinstance(chunk, dict) and "content" in chunk:
-                            content = chunk["content"]
-                        if content:
-                            yield {
-                                "type": "content",
-                                "content": content
-                            }
+                            pending_content_parts.append(chunk.content)
+                            yield {"type": "content", "content": chunk.content}
+
+                        # 处理 tool_calls
+                        if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                            for tc in chunk.tool_calls:
+                                tc_id = tc.get('id', '')
+                                if not tc_id or not tc.get('name'):
+                                    continue
+
+                                if tc_id not in pending_tool_calls:
+                                    pending_tool_calls[tc_id] = {
+                                        'name': tc.get('name'),
+                                        'args': tc.get('args', {}),
+                                        'id': tc_id
+                                    }
+                                else:
+                                    # 合并参数
+                                    pending_tool_calls[tc_id]['args'].update(tc.get('args', {}))
+
+                # LLM 结束
+                elif event_type == "on_chat_model_end":
+                    if pending_content_parts or pending_tool_calls:
+                        ai_msg = MessageHandler.build_ai_message(pending_content_parts, pending_tool_calls)
+                        if ai_msg:
+                            collected_messages.append(ai_msg)
+                        pending_content_parts = []
+                        pending_tool_calls = {}
 
             logger.info("流式处理完成")
+            logger.info(f"收集到 {len(collected_messages)} 条消息: {[type(m).__name__ for m in collected_messages]}")
+
+            # 发送完成信号和消息链
+            yield {
+                "type": "complete",
+                "full_response": "",
+                "messages": collected_messages
+            }
 
         except Exception as e:
             logger.error(f"流式处理失败: {str(e)}", exc_info=True)
-            yield {
-                "type": "error",
-                "error": str(e)
-            }
+            yield {"type": "error", "error": str(e)}
 
     async def close(self):
         """关闭连接"""

@@ -6,6 +6,7 @@ from service.database_service import database_service
 from config.logging_config import get_logger
 from config.settings import settings
 from core.chat.chat_memory_manager import ChatMemoryManager
+from utils.message_handler import MessageHandler
 
 logger = get_logger(__name__)
 
@@ -132,12 +133,11 @@ class SessionManager:
         """从结果中提取最终的响应文本"""
         messages = result.get("messages", [])
 
-        # 从后往前找最后一条 AI 消息
-        for msg in reversed(messages):
-            if isinstance(msg, AIMessage):
-                return msg.content
-
-        return "无法获取响应内容"
+        msg_content = MessageHandler.extract_final_ai_response(messages)
+        if msg_content:
+            return msg_content
+        else:
+            return "无法获取响应内容"
 
     async def process_message_stream(self, message: str):
         """
@@ -150,8 +150,8 @@ class SessionManager:
             # 重置流式状态
             current_stream_response = ""
             chunk_count = 0
-            # 次轮会话中的工具消息
-            tool_messages = []
+            # 存储本轮的完整消息链
+            complete_messages = []
 
             # 获取用于上下文的最近历史
             context_history = self._get_context_history()
@@ -163,7 +163,6 @@ class SessionManager:
             ):
                 chunk_count += 1
 
-                # 直接处理 chunk
                 if isinstance(chunk, dict):
                     chunk_type = chunk.get("type")
 
@@ -185,9 +184,6 @@ class SessionManager:
                                 "result": chunk.get("result"),
                                 "status": chunk.get("status", "success")
                             }
-                        # 保存当前会话轮次中的工具调用结果
-                        if chunk.get("status") == "success" and chunk.get("message"):
-                            tool_messages.append(chunk['message'])
 
                     elif chunk_type == "content":
                         content_chunk = chunk.get("content", "")
@@ -198,22 +194,29 @@ class SessionManager:
                                 "content": content_chunk
                             }
 
+                    elif chunk_type == "complete":
+                        # 使用后端已经去重过的消息链
+                        if chunk.get("messages"):
+                            complete_messages = chunk.get("messages")
+                            logger.info(f"接收到完整消息链，共 {len(complete_messages)} 条消息")
+                            logger.debug(f"消息类型: {[type(m).__name__ for m in complete_messages]}")
+
                     elif chunk_type == "error":
                         logger.error(f"处理错误: {chunk.get('error')}")
                         yield {
                             "type": "error",
                             "content": chunk.get("error", "未知错误")
                         }
-                    else:
-                        logger.warning(f"未知的 chunk 类型: {chunk_type}")
-                else:
-                    logger.warning(f"非字典类型的 chunk: {type(chunk)} - {chunk}")
 
             logger.info(f"流式处理完成，共收到 {chunk_count} 个 chunks，总响应长度: {len(current_stream_response)}")
 
             # 流式处理完成后，保存当前对话轮次
             if current_stream_response:
-                await self._save_current_round(message, current_stream_response, tool_messages)
+                # 如果 complete_messages 为空，构建最简单的消息链
+                if not complete_messages:
+                    complete_messages = [AIMessage(content=current_stream_response)]
+
+                await self._save_current_round(message, current_stream_response, complete_messages)
 
             # 发送完成信号
             yield {
