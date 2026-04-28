@@ -13,8 +13,6 @@ dependencies = [
     "langchain==1.2.15",
     "langchain-openai==1.0.0",
     "langgraph==1.1.6",
-    "langgraph-checkpoint==4.0.1",
-    "langgraph-checkpoint-postgres==3.0.5",
     "langchain-mcp-adapters==0.1.13",
     "deepagents==0.4.12",
     "pydantic-ai-backend[docker]==0.1.14",

@@ -51,7 +51,9 @@ class MessageService:
                 session.flush()
 
             # 转换消息链为可存储的JSON格式
+            logger.info("开始序列化消息链...")
             message_chain_json = self._serialize_message_chain(message_chain)
+            logger.info(f"序列化完成，共 {len(message_chain_json)} 条消息")
 
             # 创建消息轮次记录
             message_round = MessageModel(

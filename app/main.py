@@ -1,13 +1,15 @@
 # app/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from config.settings import settings
+from config.settings import settings, WORKSPACE_DIR
 from config.logging_config import setup_logging, get_logger
 from web.routers import api_router
 from web.middlewares.error_handler import register_error_handlers
 from core.agent.agent_manager import agent_manager
 from core.websocket.websocket_manager import ws_connection_manager
 from service.database_service import database_service
+from core.skill.skill_manager import SkillManager
+import os
 
 logger = get_logger(__name__)
 
@@ -23,13 +25,20 @@ async def lifespan(app: FastAPI):
         database_service.initialize()
         logger.info("数据库服务容器初始化成功")
 
-        # 初始化 AgentManager（单例，全局共享）
+        # 初始化 SkillManager
+        skills_dir = os.path.join(WORKSPACE_DIR, "skills")
+        skill_manager = SkillManager.initialize(skills_dir)
+        skill_manager.load_all_skills()
+        logger.info("SkillManager 初始化成功")
+
+        # 初始化 AgentManager
         await agent_manager.initialize()
         logger.info("AgentManager 初始化成功")
 
+        app.state.database_service = database_service
+        app.state.skill_manager = skill_manager
         app.state.agent_manager = agent_manager
         app.state.ws_connection_manager = ws_connection_manager
-        app.state.database_service = database_service
 
         logger.info("系统初始化成功")
     except Exception as e:
@@ -50,6 +59,11 @@ async def lifespan(app: FastAPI):
         # 关闭 AgentManager
         await agent_manager.close()
         logger.info("AgentManager 已关闭")
+
+        # 关闭 SkillManager
+        if hasattr(app.state, 'skill_manager'):
+            app.state.skill_manager.close()
+            logger.info("SkillManager 已关闭")
 
         # 关闭所有活跃的 WebSocket 连接
         await ws_connection_manager.close_all_connections()

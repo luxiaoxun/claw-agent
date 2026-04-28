@@ -11,18 +11,12 @@ class AgentPrompt:
     Agent 提示词管理器
     """
 
-    def __init__(self, skill_manager: Optional[SkillManager] = None):
+    def __init__(self):
         """
         初始化提示词管理器
-
-        Args:
-            skill_manager: 技能管理器实例，用于获取技能描述
         """
-        self.skill_manager = skill_manager
+        self.skill_manager = SkillManager.get_instance()
         self.system_prompt: Optional[str] = None
-
-    def set_skill_manager(self, skill_manager: SkillManager):
-        self.skill_manager = skill_manager
 
     def build_base_system_prompt(self) -> str:
         # 获取所有技能描述

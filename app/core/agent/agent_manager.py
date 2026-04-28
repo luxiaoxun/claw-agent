@@ -37,7 +37,7 @@ class AgentManager:
 
         try:
             logger.info("正在初始化 DeepAgent...")
-            self._deep_agent = DeepAgent(WORKSPACE_DIR)
+            self._deep_agent = DeepAgent()
             await self._deep_agent.initialize()
             logger.info(f"DeepAgent 初始化成功，工具数: {len(self._deep_agent.base_tools + self._deep_agent.mcp_tools)}")
             return self

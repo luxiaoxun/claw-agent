@@ -1,3 +1,4 @@
+# core/skill/skill_manager.py
 import frontmatter
 from typing import Dict, List, Optional
 from pathlib import Path
@@ -24,9 +25,39 @@ class SkillManager:
     扫描skills目录，加载每个skill的元数据
     """
 
-    def __init__(self, skills_dir: str):
-        self.skills_dir = Path(skills_dir)
-        self.skills: Dict[str, SkillMetadata] = {}
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(SkillManager, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, skills_dir: str = None):
+        # 确保只初始化一次
+        if not self._initialized and skills_dir is not None:
+            self.skills_dir = Path(skills_dir)
+            self.skills: Dict[str, SkillMetadata] = {}
+            self._initialized = True
+            logger.info(f"SkillManager单例初始化，skills目录: {self.skills_dir}")
+        elif not self._initialized:
+            raise ValueError("SkillManager初始化时需要提供skills_dir参数")
+
+    @classmethod
+    def get_instance(cls) -> "SkillManager":
+        """获取单例实例"""
+        if cls._instance is None:
+            raise RuntimeError("SkillManager尚未初始化，请在lifespan中调用initialize方法")
+        return cls._instance
+
+    @classmethod
+    def initialize(cls, skills_dir: str) -> "SkillManager":
+        """初始化单例实例"""
+        if cls._instance is None:
+            cls._instance = cls(skills_dir)
+        elif not cls._initialized:
+            cls._instance.__init__(skills_dir)
+        return cls._instance
 
     def load_all_skills(self) -> Dict[str, SkillMetadata]:
         """加载所有skill的元数据"""
@@ -34,19 +65,22 @@ class SkillManager:
             logger.warning(f"Skills目录不存在: {self.skills_dir}")
             return {}
 
+        loaded_count = 0
         for skill_dir in self.skills_dir.iterdir():
             if skill_dir.is_dir():
                 metadata = self._load_skill_metadata(skill_dir)
                 if metadata:
                     self.skills[metadata.name] = metadata
+                    loaded_count += 1
 
-        logger.info(f"加载了 {len(self.skills)} 个技能")
+        logger.info(f"加载了 {loaded_count} 个技能，总计 {len(self.skills)} 个技能")
         return self.skills
 
     def _load_skill_metadata(self, skill_dir: Path) -> Optional[SkillMetadata]:
         """加载单个skill的元数据"""
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.exists():
+            logger.debug(f"Skill目录 {skill_dir.name} 中没有SKILL.md文件")
             return None
 
         try:
@@ -89,3 +123,13 @@ class SkillManager:
             {"name": skill.name, "description": skill.description}
             for skill in self.skills.values()
         ]
+
+    def reload_skills(self) -> Dict[str, SkillMetadata]:
+        """重新加载所有skills"""
+        self.skills.clear()
+        return self.load_all_skills()
+
+    def close(self):
+        """清理资源"""
+        logger.info("SkillManager 清理资源")
+        self.skills.clear()

@@ -1,10 +1,8 @@
 # core/agent/deep_agent.py
-import os
 from typing import Dict, Any, List, Optional
 from langchain.agents import create_agent
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
-from core.skill.skill_manager import SkillManager
 from core.tool.mcp.mcp_client import MCPClientManager
 from core.tool import file_read, file_write, file_edit, file_search, command_execute, doc_parser, search_data, \
     web_fetch, web_search
@@ -20,10 +18,7 @@ class DeepAgent:
     ReAct Agent
     """
 
-    def __init__(self, workspace_dir):
-        self.skill_loader = SkillManager(os.path.join(workspace_dir, "skills"))
-        self.skill_loader.load_all_skills()
-
+    def __init__(self):
         # 基础工具（始终可用）
         self.base_tools = [file_read, file_write, file_edit, file_search, command_execute, doc_parser, web_fetch,
                            web_search, search_data]
@@ -39,7 +34,7 @@ class DeepAgent:
         self.system_prompt: Optional[str] = None
 
         # 提示词管理器
-        self.prompt_manager = AgentPrompt(self.skill_loader)
+        self.prompt_manager = AgentPrompt()
 
     async def initialize(self):
         """初始化Agent"""
