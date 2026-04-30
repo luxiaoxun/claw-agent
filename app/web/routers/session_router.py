@@ -28,7 +28,7 @@ class MessageRoundResponse(BaseModel):
     id: int
     session_id: str
     user_message: str
-    ai_response: str
+    ai_message: str
     message_chain: Optional[dict] = None
     round_number: int
     meta_data: Optional[dict] = None

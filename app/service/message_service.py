@@ -17,7 +17,7 @@ class MessageService:
 
     def save_round_message(self, session_id: str,
                            user_message: str,
-                           ai_response: str,
+                           ai_message: str,
                            message_chain: List[Any],
                            round_number: int,
                            meta_data: Optional[Dict] = None) -> Optional[int]:
@@ -48,7 +48,7 @@ class MessageService:
             message_round = MessageModel(
                 session_id=session_id,
                 user_message=user_message,
-                ai_response=ai_response,
+                ai_message=ai_message,
                 message_chain=message_chain_json,
                 round_number=round_number,
                 meta_data=meta_data,

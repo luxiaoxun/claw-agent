@@ -46,7 +46,7 @@ class MessageModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(255), ForeignKey('tb_session.session_id', ondelete='CASCADE'))
     user_message = Column(Text, nullable=False)  # 用户输入的消息
-    ai_response = Column(Text, nullable=False)  # AI 的最终响应
+    ai_message = Column(Text, nullable=False)  # AI 的最终响应
     # 完整的消息链（JSON 格式，存储完整的交互过程）
     # 包含：AIMessage (可能带 tool_calls), ToolMessage 等
     message_chain = Column(JSON, nullable=True)  # 存储完整的消息链
@@ -62,7 +62,7 @@ class MessageModel(Base):
             "id": self.id,
             "session_id": self.session_id,
             "user_message": self.user_message,
-            "ai_response": self.ai_response,
+            "ai_message": self.ai_message,
             "message_chain": self.message_chain,
             "round_number": self.round_number,
             "meta_data": self.meta_data,
@@ -99,8 +99,8 @@ class MessageModel(Base):
                     messages.append(tool_msg)
 
         # 添加 AI 最终响应（如果不在消息链中）
-        if not any(isinstance(msg, AIMessage) and msg.content == self.ai_response for msg in messages):
-            messages.append(AIMessage(content=self.ai_response))
+        if not any(isinstance(msg, AIMessage) and msg.content == self.ai_message for msg in messages):
+            messages.append(AIMessage(content=self.ai_message))
 
         return messages
 

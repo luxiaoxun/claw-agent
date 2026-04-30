@@ -94,11 +94,11 @@ class SessionManager:
         """
         return self.memory_manager.get_context_history()
 
-    async def _save_current_round(self, user_message: str, ai_response: str, messages: List[BaseMessage]):
+    async def _save_current_round(self, user_message: str, ai_message: str, messages: List[BaseMessage]):
         """
         保存当前对话轮次到数据库
         """
-        await self.memory_manager.save_current_round(user_message, ai_response, messages)
+        await self.memory_manager.save_current_round(user_message, ai_message, messages)
 
     async def process_message(self, message: str) -> str:
         """处理用户消息（非流式）"""

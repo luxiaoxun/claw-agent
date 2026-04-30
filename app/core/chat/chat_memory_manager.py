@@ -81,7 +81,7 @@ class ChatMemoryManager:
             self.chat_history.append({
                 'id': round_data.get('id'),
                 'user_message': round_data.get('user_message'),
-                'ai_response': round_data.get('ai_response'),
+                'ai_message': round_data.get('ai_message'),
                 'message_chain': message_chain,
                 'round_number': round_data.get('round_number'),
                 'create_time': round_data.get('create_time')
@@ -122,7 +122,7 @@ class ChatMemoryManager:
                     context_messages.extend(deserialized_messages)
                 else:
                     # 兼容旧格式
-                    context_messages.append(AIMessage(content=round_data['ai_response']))
+                    context_messages.append(AIMessage(content=round_data['ai_message']))
 
         except Exception as e:
             logger.error(f"Get context history error: {e}", exc_info=True)
@@ -130,7 +130,7 @@ class ChatMemoryManager:
 
         return context_messages
 
-    async def save_current_round(self, user_message: str, ai_response: str,
+    async def save_current_round(self, user_message: str, ai_message: str,
                                  messages: List[BaseMessage], meta_data: Dict = None) -> Optional[str]:
         """
         保存当前对话轮次到数据库
@@ -157,7 +157,7 @@ class ChatMemoryManager:
             round_id = self.message_service.save_round_message(
                 session_id=self.session_id,
                 user_message=user_message,
-                ai_response=ai_response,
+                ai_message=ai_message,
                 message_chain=messages,  # 传递原始消息对象，序列化在服务层完成
                 round_number=self._next_round_number,
                 meta_data=meta_data
@@ -170,7 +170,7 @@ class ChatMemoryManager:
                 self.chat_history.append({
                     'id': round_id,
                     'user_message': user_message,
-                    'ai_response': ai_response,
+                    'ai_message': ai_message,
                     'message_chain': serialized_chain,
                     'round_number': self._next_round_number,
                     'create_time': datetime.now().isoformat()
