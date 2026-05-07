@@ -12,6 +12,7 @@ dependencies = [
     # LangChain & LangGraph
     "langchain==1.2.15",
     "langchain-openai==1.0.0",
+    "langchain-deepseek==1.0.1",
     "langgraph==1.1.6",
     "langchain-mcp-adapters==0.1.13",
     "deepagents==0.4.12",

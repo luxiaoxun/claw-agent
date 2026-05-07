@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     PORT: int = 5000
 
     # LLM配置
+    LLM_MODEL_PROVIDER: str = os.getenv("LLM_MODEL_PROVIDER", "openai")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4")
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     OPENAI_BASE_URL: Optional[str] = os.getenv("OPENAI_BASE_URL")

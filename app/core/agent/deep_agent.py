@@ -8,6 +8,7 @@ from core.tool import file_read, file_write, file_edit, file_search, command_exe
     web_fetch, web_search
 from core.agent.agent_prompt import AgentPrompt
 from utils.message_handler import MessageHandler
+from utils.token_usage import extract_token_usage_from_output
 from config.settings import settings
 from config.logging_config import get_logger
 
@@ -20,7 +21,7 @@ class DeepAgent:
     """
 
     def __init__(self):
-        # 基础工具（始终可用）
+        # 基础工具
         self.base_tools = [file_read, file_write, file_edit, file_search, command_execute, doc_parser, web_fetch,
                            web_search, search_data]
 
@@ -31,7 +32,7 @@ class DeepAgent:
 
         # Agent
         self.llm: Optional[BaseChatModel] = None
-        self.agent = None  # Runnable agent
+        self.agent = None
         self.system_prompt: Optional[str] = None
 
         # 提示词管理器
@@ -64,7 +65,7 @@ class DeepAgent:
             raise ValueError("OPENAI_API_KEY 未设置")
 
         self.llm = init_chat_model(
-            model_provider="openai",
+            model_provider=settings.LLM_MODEL_PROVIDER,
             model=settings.LLM_MODEL,
             temperature=settings.LLM_TEMPERATURE,
             api_key=settings.OPENAI_API_KEY,
@@ -122,6 +123,22 @@ class DeepAgent:
             {"messages": messages}
         )
 
+        # 统计 LLM 调用的 token 消耗
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_tokens = 0
+
+        for msg in result.get("messages", []):
+            token_usage = extract_token_usage_from_output(msg)
+            if token_usage:
+                total_input_tokens += token_usage.get("input", 0) if token_usage else 0
+                total_output_tokens += token_usage.get("output", 0) if token_usage else 0
+                total_tokens += token_usage.get("total", 0) if token_usage else 0
+
+        logger.info(
+            f"本次请求 Token 总消耗 - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}"
+        )
+
         # 返回标准格式
         return {
             "messages": result.get("messages", []),
@@ -151,6 +168,11 @@ class DeepAgent:
         try:
             logger.info("开始流式处理")
 
+            # 统计 LLM 调用的 token 消耗
+            total_input_tokens = 0
+            total_output_tokens = 0
+            total_tokens = 0
+
             # 收集完整的消息链
             collected_messages = []
             # 流式状态
@@ -161,6 +183,7 @@ class DeepAgent:
                     {"messages": messages},
                     version="v2"
             ):
+                logger.info(event)
                 event_type = event.get("event")
 
                 # 工具调用开始
@@ -240,6 +263,15 @@ class DeepAgent:
 
                 # LLM 结束
                 elif event_type == "on_chat_model_end":
+                    # Extract token usage
+                    event_data = event.get("data", {})
+                    output = event_data.get("output")
+                    token_usage = extract_token_usage_from_output(output)
+                    if token_usage:
+                        total_input_tokens += token_usage.get("input", 0) if token_usage else 0
+                        total_output_tokens += token_usage.get("output", 0) if token_usage else 0
+                        total_tokens += token_usage.get("total", 0) if token_usage else 0
+
                     if pending_content_parts or pending_tool_calls:
                         ai_msg = MessageHandler.build_ai_message(pending_content_parts, pending_tool_calls)
                         if ai_msg:
@@ -249,6 +281,9 @@ class DeepAgent:
 
             logger.info("流式处理完成")
             logger.info(f"收集到 {len(collected_messages)} 条消息: {[type(m).__name__ for m in collected_messages]}")
+            logger.info(
+                f"本次请求 Token 总消耗 - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}"
+            )
 
             # 发送完成信号和消息链
             yield {
