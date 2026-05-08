@@ -1,11 +1,11 @@
 # core/chat/session_manager.py
-from typing import List, Dict, Any, Optional
-from langchain_core.messages import BaseMessage, AIMessage, ToolMessage
+from typing import List, Dict, Any
+from langchain_core.messages import BaseMessage, AIMessage
 from core.agent.agent_manager import agent_manager
 from service.database_service import database_service
 from config.logging_config import get_logger
 from config.settings import settings
-from core.chat.chat_memory_manager import ChatMemoryManager
+from core.chat.memory.chat_memory_manager import ChatMemoryManager
 from utils.message_handler import MessageHandler
 
 logger = get_logger(__name__)
@@ -76,7 +76,7 @@ class SessionManager:
             # 如果有会话ID，加载历史消息
             if self.session_id:
                 await self.memory_manager.load_history()
-                logger.info(f"加载会话历史: {self.session_id}, 轮次数: {len(self.memory_manager.chat_history)}")
+                logger.info(f"加载会话历史: {self.session_id}, 轮次数: {self.memory_manager.current_round_number}")
             else:
                 logger.info("创建新会话，等待 session_id")
 

@@ -57,8 +57,16 @@ class Settings(BaseSettings):
     ES_MAX_RESULTS: int = int(os.getenv("ES_MAX_RESULTS", "100"))
 
     # Message配置
-    MSG_MAX_HISTORY_LENGTH: int = 5
     MSG_TOOL_OUTPUT_ENABLED: bool = os.getenv("MSG_TOOL_OUTPUT_ENABLED", "true").lower() == "true"
+
+    # 上下文策略配置
+    CONTEXT_STRATEGY: str = "round"  # round | token | message_count | semantic | hybrid
+    MSG_MAX_HISTORY_LENGTH: int = 10  # round 策略的最大轮次
+    MAX_CONTEXT_TOKENS: int = 8000  # token 策略的最大 token
+    MAX_CONTEXT_MESSAGES: int = 20  # message_count 策略的最大消息数
+    MIN_CONTEXT_ROUNDS: int = 5  # hybrid 策略的最小轮次
+    CONTEXT_STRATEGY_LAST: str = "last"  # token 策略的裁剪方向
+    TOKEN_COUNTER_MODE: str = "auto"  # approximate | tiktoken | auto
 
     # 安全配置
     HIGH_RISK_TOOLS: List[str] = ["block_ips"]

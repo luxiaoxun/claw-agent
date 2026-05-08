@@ -159,7 +159,7 @@ class DeepAgent:
         messages = chat_history + [HumanMessage(content=message)]
 
         # 验证消息链
-        logger.info(f"消息链长度: {len(messages)}")
+        logger.debug(f"消息链长度: {len(messages)}")
         for i, msg in enumerate(messages):
             logger.debug(f"消息 {i}: {type(msg).__name__} - {str(getattr(msg, 'content', ''))[:50]}")
             if isinstance(msg, ToolMessage):
@@ -183,7 +183,6 @@ class DeepAgent:
                     {"messages": messages},
                     version="v2"
             ):
-                logger.info(event)
                 event_type = event.get("event")
 
                 # 工具调用开始
