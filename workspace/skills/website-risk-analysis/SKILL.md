@@ -1,7 +1,6 @@
 ---
 name: website-risk-analysis
 description: 对任意网站进行安全性分析，识别钓鱼、恶意代码、可疑域名等风险，生成结构化安全报告。
-
 ---
 
 # Website Risk Analysis Skill
