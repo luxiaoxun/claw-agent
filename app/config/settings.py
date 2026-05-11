@@ -1,27 +1,29 @@
 import os
 import sys
 from typing import Optional, List
+
+from pydantic.v1.utils import ROOT_KEY
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 
-def get_work_dir():
+def get_root_dir():
     """获取程序的工作目录（项目根目录）"""
     if getattr(sys, 'frozen', False):
         # 打包后的exe，返回exe所在目录
         return os.path.dirname(sys.executable)
     else:
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        work_dir = os.path.dirname(os.path.dirname(current_dir))
-        return work_dir
+        root_dir = os.path.dirname(os.path.dirname(current_dir))
+        return root_dir
 
 
 # 根目录和工作目录
-WORK_DIR = get_work_dir()
-WORKSPACE_DIR = os.path.join(WORK_DIR, "workspace")
+ROOT_DIR = get_root_dir()
+WORKSPACE_DIR = os.path.join(ROOT_DIR, "workspace")
 
 # 加载 .env 文件（从工作目录加载）
-env_path = os.path.join(WORK_DIR, '.env')
+env_path = os.path.join(ROOT_DIR, '.env')
 if os.path.exists(env_path):
     load_dotenv(env_path)
 else:

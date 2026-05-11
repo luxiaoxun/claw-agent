@@ -6,9 +6,10 @@ from config.logging_config import setup_logging, get_logger
 from web.routers import api_router
 from web.middlewares.error_handler import register_error_handlers
 from core.agent.agent_manager import agent_manager
-from core.websocket.websocket_manager import ws_connection_manager
-from service.database_service import database_service
 from core.skill.skill_manager import SkillManager
+from service.database_service import database_service
+from core.websocket.websocket_service import websocket_service
+
 import os
 
 logger = get_logger(__name__)
@@ -38,7 +39,7 @@ async def lifespan(app: FastAPI):
         app.state.database_service = database_service
         app.state.skill_manager = skill_manager
         app.state.agent_manager = agent_manager
-        app.state.ws_connection_manager = ws_connection_manager
+        app.state.websocket_service = websocket_service
 
         logger.info("系统初始化成功")
     except Exception as e:
@@ -66,7 +67,7 @@ async def lifespan(app: FastAPI):
             logger.info("SkillManager 已关闭")
 
         # 关闭所有活跃的 WebSocket 连接
-        await ws_connection_manager.close_all_connections()
+        websocket_service.close()
 
         logger.info("资源清理完成")
     except Exception as e:

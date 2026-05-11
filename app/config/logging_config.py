@@ -2,7 +2,7 @@ import os
 import logging
 from loguru import logger
 import sys
-from config.settings import WORK_DIR
+from config.settings import ROOT_DIR
 
 
 class InterceptHandler(logging.Handler):
@@ -27,7 +27,7 @@ class InterceptHandler(logging.Handler):
 def setup_logging():
     """配置日志系统"""
     # 创建logs目录
-    log_dir = os.path.join(WORK_DIR, 'logs')
+    log_dir = os.path.join(ROOT_DIR, 'logs')
     os.makedirs(log_dir, exist_ok=True)
 
     # 移除默认处理器

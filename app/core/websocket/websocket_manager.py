@@ -1,4 +1,4 @@
-# core/websocket/websocket_manager.py
+# core/websocket/connection_manager.py
 from typing import Dict, Optional
 from fastapi import WebSocket
 from core.chat.session_manager import SessionManager
@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 
 
 class WebSocketConnectionManager:
-    """WebSocket 连接管理器 - 管理每个连接的会话状态"""
+    """WebSocket 连接管理器 - 只负责管理连接和会话状态"""
 
     def __init__(self):
         self.active_connections: Dict[str, Dict] = {}
@@ -30,13 +30,10 @@ class WebSocketConnectionManager:
         if not client_id:
             client_id = str(uuid.uuid4())
 
-        # 创建新的会话管理器
-        session_manager = SessionManager()
-
         # 存储连接信息
         self.active_connections[client_id] = {
             "websocket": websocket,
-            "session_manager": session_manager,
+            "session_manager": None,
             "session_id": None,
             "user_id": None,
             "initialized": False
@@ -50,9 +47,6 @@ class WebSocketConnectionManager:
         """
         获取或创建会话管理器
 
-        当 session_id 为 None 时，创建新的会话管理器
-        当 session_id 有值时，查找已存在的会话管理器，如果不存在则创建新的
-
         Args:
             client_id: 客户端ID
             session_id: 会话ID（可以为 None）
@@ -65,12 +59,12 @@ class WebSocketConnectionManager:
         if not conn:
             raise ValueError(f"客户端 {client_id} 不存在")
 
-        session_manager = conn["session_manager"]
+        session_manager = conn.get("session_manager")
 
         # 情况1: session_id 为 None，创建新的会话管理器
         if session_id is None:
             # 检查当前是否已经有初始化的会话管理器
-            if conn.get("initialized"):
+            if conn.get("initialized") and session_manager:
                 # 如果已经初始化，关闭旧的会话管理器
                 try:
                     await session_manager.close()
@@ -103,13 +97,13 @@ class WebSocketConnectionManager:
         # 情况2: session_id 有值，查找已存在的会话管理器
         else:
             # 检查当前会话管理器是否已经初始化且 session_id 匹配
-            if conn.get("initialized") and conn["session_id"] == session_id:
+            if conn.get("initialized") and session_manager and conn["session_id"] == session_id:
                 logger.debug(f"找到已存在的会话管理器，session_id: {session_id}")
                 return session_manager
 
             # 未初始化或 session_id 不匹配，创建新的会话管理器
             # 先关闭旧的（如果存在）
-            if conn.get("initialized"):
+            if conn.get("initialized") and session_manager:
                 try:
                     await session_manager.close()
                     logger.info(f"关闭旧的会话管理器，session_id: {conn['session_id']}")
@@ -137,6 +131,26 @@ class WebSocketConnectionManager:
                 logger.error(f"创建指定会话管理器失败: {str(e)}")
                 raise
 
+    def get_session_info(self, client_id: str) -> Optional[Dict]:
+        """获取客户端的会话信息"""
+        conn = self.active_connections.get(client_id)
+        if conn:
+            return {
+                "session_id": conn.get("session_id"),
+                "user_id": conn.get("user_id"),
+                "initialized": conn.get("initialized", False)
+            }
+        return None
+
+    def get_websocket(self, client_id: str) -> Optional[WebSocket]:
+        """获取客户端的 WebSocket 连接"""
+        conn = self.active_connections.get(client_id)
+        return conn.get("websocket") if conn else None
+
+    def is_client_connected(self, client_id: str) -> bool:
+        """检查客户端是否已连接"""
+        return client_id in self.active_connections
+
     def disconnect(self, client_id: str):
         """断开连接（同步版本，仅移除连接，不清理资源）"""
         if client_id in self.active_connections:
@@ -147,10 +161,10 @@ class WebSocketConnectionManager:
         """断开连接并清理资源（异步版本）"""
         if client_id in self.active_connections:
             conn = self.active_connections[client_id]
-            manager = conn.get("session_manager")
-            if manager:
+            session_manager = conn.get("session_manager")
+            if session_manager:
                 try:
-                    await manager.close()
+                    await session_manager.close()
                     logger.info(f"客户端 {client_id} 的会话管理器已关闭")
                 except Exception as e:
                     logger.error(f"关闭客户端 {client_id} 的会话管理器时出错: {str(e)}")
@@ -165,26 +179,6 @@ class WebSocketConnectionManager:
 
             del self.active_connections[client_id]
             logger.info(f"WebSocket 客户端 {client_id} 已断开并清理资源")
-
-    def get_websocket(self, client_id: str) -> Optional[WebSocket]:
-        """获取客户端的 WebSocket 连接"""
-        conn = self.active_connections.get(client_id)
-        return conn.get("websocket") if conn else None
-
-    def get_session_id(self, client_id: str) -> Optional[str]:
-        """获取客户端的当前会话ID"""
-        conn = self.active_connections.get(client_id)
-        return conn.get("session_id") if conn else None
-
-    def get_user_id(self, client_id: str) -> Optional[str]:
-        """获取客户端的用户ID"""
-        conn = self.active_connections.get(client_id)
-        return conn.get("user_id") if conn else None
-
-    def is_manager_initialized(self, client_id: str) -> bool:
-        """检查客户端的会话管理器是否已初始化"""
-        conn = self.active_connections.get(client_id)
-        return conn.get("initialized", False) if conn else False
 
     async def send_to_client(self, client_id: str, message: dict):
         """向指定客户端发送消息"""
@@ -205,17 +199,9 @@ class WebSocketConnectionManager:
         """获取活跃连接数"""
         return len(self.active_connections)
 
-    def is_client_connected(self, client_id: str) -> bool:
-        """检查客户端是否已连接"""
-        return client_id in self.active_connections
-
     async def close_all_connections(self):
         """关闭所有连接（用于系统关闭时）"""
         logger.info(f"正在关闭所有 WebSocket 连接")
         for client_id in list(self.active_connections.keys()):
             await self.disconnect_and_cleanup(client_id)
         logger.info("所有 WebSocket 连接已关闭")
-
-
-# 全局实例
-ws_connection_manager = WebSocketConnectionManager()

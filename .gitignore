@@ -17,6 +17,7 @@ target/
 
 .env
 *.db
+uploads/
 
 node_modules/
 .DS_Store

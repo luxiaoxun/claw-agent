@@ -1,31 +1,48 @@
 <template>
   <div>
-    <h2>AI Agent测试 - Vue版</h2>
+    <h2>AI Agent测试</h2>
 
     <!-- 消息输出区域 -->
-    <div class="output" ref="outputRef">
+    <div
+        class="output"
+        ref="outputRef"
+        @dragenter="handleDragEnter"
+        @dragleave="handleDragLeave"
+        @dragover="handleDragOver"
+        @drop="handleDrop"
+        :class="{ 'drag-active': dragActive }"
+    >
+      <div v-if="dragActive" class="drag-overlay">
+        <div class="drag-content">
+          📎 释放文件以上传
+        </div>
+      </div>
+
       <div
-        v-for="(msg, index) in messages"
-        :key="index"
-        :class="msg.className"
-        v-html="msg.html"
+          v-for="(msg, index) in messages"
+          :key="index"
+          :class="msg.className"
+          v-html="msg.html"
       ></div>
     </div>
 
     <!-- 输入区域 -->
     <div class="input-area">
       <input
-        type="text"
-        v-model="inputMessage"
-        @keypress="handleKeyPress"
-        placeholder="输入消息..."
-        :disabled="status !== 'connected'"
+          type="text"
+          v-model="inputMessage"
+          @keypress="handleKeyPress"
+          placeholder="输入消息或拖拽文件到上方区域..."
+          :disabled="status !== 'connected'"
       />
       <div class="button-group">
+        <button @click="openFileSelector" class="file-btn" title="上传文件">
+          📎
+        </button>
         <button
-          @click="sendMessage"
-          :disabled="status !== 'connected' || !inputMessage.trim()"
-          id="sendBtn"
+            @click="sendMessage"
+            :disabled="status !== 'connected' || !inputMessage.trim()"
+            id="sendBtn"
         >
           发送
         </button>
@@ -35,15 +52,26 @@
       </div>
     </div>
 
+    <!-- 隐藏的文件输入 -->
+    <input
+        type="file"
+        ref="fileInput"
+        style="display: none"
+        @change="handleFileSelect"
+    />
+
     <!-- 状态栏 -->
     <div :class="['status', statusClass]">
       状态: {{ statusText }}
+      <span v-if="dragActive" style="margin-left: 10px; color: #2196f3;">
+        📎 拖拽文件到此处上传
+      </span>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import {ref, computed, onMounted, onUnmounted, nextTick} from 'vue'
 
 // 响应式数据
 const ws = ref(null)
@@ -61,12 +89,17 @@ const API_BASE_URL = 'http://localhost:5000/api'
 
 // 计算状态文本和样式
 const statusText = computed(() => {
-  switch(status.value) {
-    case 'connecting': return '正在连接...'
-    case 'connected': return '已连接'
-    case 'processing': return '处理中...'
-    case 'disconnected': return '已断开'
-    default: return '未知'
+  switch (status.value) {
+    case 'connecting':
+      return '正在连接...'
+    case 'connected':
+      return '已连接'
+    case 'processing':
+      return '处理中...'
+    case 'disconnected':
+      return '已断开'
+    default:
+      return '未知'
   }
 })
 
@@ -162,7 +195,7 @@ const connect = () => {
       try {
         const data = JSON.parse(event.data)
 
-        switch(data.type) {
+        switch (data.type) {
           case 'connection':
             addMessage('系统', data.message || '连接成功', 'system')
             break
@@ -189,8 +222,8 @@ const connect = () => {
 
           case 'tool_result':
             const resultPreview = typeof data.result === 'string'
-              ? data.result.substring(0, 200)
-              : JSON.stringify(data.result).substring(0, 200)
+                ? data.result.substring(0, 200)
+                : JSON.stringify(data.result).substring(0, 200)
             const statusIcon = data.status === 'error' ? '✗' : '✓'
             addMessage(`${statusIcon} 工具结果`, `${data.tool_name}: ${resultPreview}${resultPreview.length >= 200 ? '...' : ''}`, 'tool-result')
             break
@@ -200,6 +233,10 @@ const connect = () => {
             status.value = 'connected'
             currentResponseIndex.value = -1
             currentResponseContent.value = ''
+            break
+
+          case 'file_received':
+            handleFileReceived(data)
             break
 
           case 'error':
@@ -227,7 +264,7 @@ const connect = () => {
       if (reconnectAttempts.value < maxReconnectAttempts && !window.isManualClose) {
         reconnectAttempts.value++
         const delay = 5000
-        addMessage('系统', `${delay/1000}秒后尝试重连... (${reconnectAttempts.value}/${maxReconnectAttempts})`, 'system')
+        addMessage('系统', `${delay / 1000}秒后尝试重连... (${reconnectAttempts.value}/${maxReconnectAttempts})`, 'system')
         setTimeout(() => {
           if (ws.value.readyState === WebSocket.CLOSED) {
             addMessage('系统', '尝试重新连接...', 'system')
@@ -314,10 +351,153 @@ onUnmounted(() => {
     ws.value.close()
   }
 })
+
+
+const dragActive = ref(false) // 拖拽激活状态
+const fileInput = ref(null)   // 文件输入引用
+
+// 发送文件
+const sendFile = (file) => {
+  if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
+    addMessage('错误', 'WebSocket 未连接，无法上传文件', 'error')
+    return false
+  }
+
+  const reader = new FileReader()
+
+  reader.onload = () => {
+    // 准备元数据
+    const metadata = {
+      filename: file.name,
+      filetype: file.type,
+      size: file.size,
+      timestamp: new Date().toISOString()
+    }
+
+    // 编码元数据为 JSON 字符串
+    const metadataStr = JSON.stringify(metadata)
+    const metadataBytes = new TextEncoder().encode(metadataStr)
+    const metadataLength = metadataBytes.length
+
+    // 构建二进制数据包
+    // 格式：[4字节元数据长度][元数据JSON][文件二进制数据]
+    const buffer = new ArrayBuffer(4 + metadataLength + file.size)
+    const view = new DataView(buffer)
+
+    // 写入元数据长度（大端序）
+    view.setUint32(0, metadataLength, false)
+
+    // 写入元数据
+    const metadataBuffer = new Uint8Array(buffer, 4, metadataLength)
+    metadataBuffer.set(metadataBytes)
+
+    // 写入文件数据
+    const fileBuffer = new Uint8Array(buffer, 4 + metadataLength, file.size)
+    fileBuffer.set(new Uint8Array(reader.result))
+
+    // 发送二进制数据
+    ws.value.send(buffer)
+
+    // 在聊天界面显示文件上传消息
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2)
+    addMessage('用户', `📎 上传文件: ${file.name} (${fileSizeMB} MB)`, 'user')
+    addMessage('系统', `文件上传中...`, 'system')
+  }
+
+  reader.onerror = () => {
+    addMessage('错误', `文件读取失败: ${file.name}`, 'error')
+  }
+
+  reader.readAsArrayBuffer(file)
+  return true
+}
+
+// 处理拖拽
+const handleDragEnter = (e) => {
+  e.preventDefault()
+  dragActive.value = true
+}
+
+const handleDragLeave = (e) => {
+  e.preventDefault()
+  dragActive.value = false
+}
+
+const handleDragOver = (e) => {
+  e.preventDefault()
+}
+
+const handleDrop = (e) => {
+  e.preventDefault()
+  dragActive.value = false
+
+  const files = e.dataTransfer.files
+  if (files.length > 0) {
+    const file = files[0]
+    // 可选：添加文件大小限制（如 100MB）
+    if (file.size > 100 * 1024 * 1024) {
+      addMessage('错误', `文件太大: ${file.name} (超过100MB限制)`, 'error')
+      return
+    }
+    sendFile(file)
+  }
+}
+
+// 打开文件选择器
+const openFileSelector = () => {
+  fileInput.value.click()
+}
+
+// 处理文件选择
+const handleFileSelect = (e) => {
+  const files = e.target.files
+  if (files.length > 0) {
+    const file = files[0]
+    if (file.size > 100 * 1024 * 1024) {
+      addMessage('错误', `文件太大: ${file.name} (超过100MB限制)`, 'error')
+      return
+    }
+    sendFile(file)
+  }
+  // 清空 input，以便重新选择同一文件
+  fileInput.value.value = ''
+}
+
+// 接收文件上传成功的消息
+const handleFileReceived = (data) => {
+  const fileInfo = data.file_info
+
+  // 格式化文件大小（字节 -> 可读格式）
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const formattedSize = formatFileSize(fileInfo.size)
+
+  // 显示成功消息
+  addMessage('系统', `✅ 文件上传成功: ${fileInfo.name} (${formattedSize})`, 'system')
+
+  // 显示文件保存信息
+  addMessage('系统', `📁 保存为: ${fileInfo.saved_name}`, 'system', true)
+
+  // 显示访问路径（如果有 URL）
+  if (fileInfo.url) {
+    addMessage('系统', `🔗 访问路径: ${fileInfo.url}`, 'system', true)
+  }
+
+  // 可选：显示完整信息（点击可展开）
+  console.log('文件上传成功详情:', fileInfo)
+}
+
 </script>
 
 <style scoped>
 .output {
+  position: relative;
   margin-top: 20px;
   border: 1px solid #ccc;
   padding: 10px;
@@ -325,6 +505,66 @@ onUnmounted(() => {
   max-height: 500px;
   overflow-y: auto;
   background-color: #f9f9f9;
+  transition: all 0.3s ease;
+}
+
+.output.drag-active {
+  border: 2px dashed #2196f3;
+  background-color: #e3f2fd;
+}
+
+.drag-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(33, 150, 243, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.drag-content {
+  background-color: white;
+  padding: 20px 40px;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  font-size: 18px;
+  color: #2196f3;
+  font-weight: bold;
+}
+
+.input-area {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.input-area input {
+  flex: 1;
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
+.file-btn {
+  background-color: #9c27b0;
+  color: white;
+  font-size: 16px;
+  width: 40px;
+}
+
+.file-btn:hover {
+  background-color: #7b1fa2;
 }
 
 .tool-call {

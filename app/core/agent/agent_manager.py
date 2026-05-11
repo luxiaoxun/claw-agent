@@ -1,7 +1,6 @@
 # core/agent/agent_manager.py
 from typing import Optional, List, Dict, Any
 from core.agent.deep_agent import DeepAgent
-from config.settings import WORKSPACE_DIR
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)

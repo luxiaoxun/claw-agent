@@ -3,8 +3,9 @@
 一个简单的AI Agent
 
 ## 功能特性
-- 聊天Chat
-- 会话管理
+- 聊天Chat：支持流式会话、文件传输
+- 会话管理：多用户多session会话
+- 上下文memory压缩
 - Skill管理
 
 ### 内置工具
@@ -48,3 +49,9 @@ uv run python app/main.py
 
 ### API docs
 http://127.0.0.1:5000/docs
+
+### Web UI
+```bash
+npm run dev
+```
+http://localhost:5173/
