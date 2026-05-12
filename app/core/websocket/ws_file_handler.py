@@ -169,18 +169,58 @@ class FileMessageHandler:
 
     async def _notify_ai_about_file(self, client_id: str, file_info: dict):
         """
-        可选：通知AI有文件上传，可以将文件信息添加到会话上下文中
+        通知 AI 有文件上传，将文件信息添加到会话上下文中
 
         Args:
             client_id: 客户端ID
             file_info: 文件信息
         """
         try:
-            session_info = self.connection_manager.get_session_info(client_id)
-            if session_info and session_info.get("initialized"):
-                # 这里可以扩展：将文件信息添加到会话管理器的上下文中
-                # 让AI能够感知到用户上传了文件
-                # 例如：session_manager.add_file_context(file_info)
-                logger.debug(f"文件已添加到会话上下文: {file_info['original_name']}")
+            # 获取连接信息和会话管理器
+            conn = self.connection_manager.active_connections.get(client_id)
+            if not conn:
+                logger.warning(f"客户端 {client_id} 不存在，无法添加文件上下文")
+                return
+
+            session_manager = conn.get("session_manager")
+            if not session_manager:
+                logger.warning(f"客户端 {client_id} 没有会话管理器，无法添加文件上下文")
+                return
+
+            # 调用 SessionManager 的方法添加文件上下文
+            success = await session_manager.add_file_context(file_info)
+            if success:
+                logger.info(
+                    f"文件上下文已添加到会话: {file_info['original_name']}, session_id: {session_manager.session_id}")
+
+                # 可选：自动发送一条消息通知用户
+                # await self._send_file_notification(conn.get("websocket"), file_info)
+            else:
+                logger.warning(f"文件上下文添加失败: {file_info['original_name']}")
+
         except Exception as e:
-            logger.warning(f"通知AI文件上传失败: {str(e)}")
+            logger.error(f"通知AI文件上传失败: {str(e)}", exc_info=True)
+
+    async def _send_file_notification(self, websocket: WebSocket, file_info: dict):
+        """
+        可选：发送文件上传成功的通知消息（展示在聊天界面）
+
+        Args:
+            websocket: WebSocket连接
+            file_info: 文件信息
+        """
+        try:
+            # 可以选择是否在聊天界面显示文件上传的系统消息
+            if hasattr(self, 'show_file_upload_message') and self.show_file_upload_message:
+                await websocket.send_json({
+                    "type": "system",
+                    "content": f"📎 文件已上传: {file_info['original_name']} ({file_info['size']} B)\n"
+                               f"你可以继续提问，AI 将能够访问这个文件。",
+                    "file_info": {
+                        "name": file_info['original_name'],
+                        "url": file_info['url'],
+                        "size_mb": file_info['size_mb']
+                    }
+                })
+        except Exception as e:
+            logger.debug(f"发送文件通知失败: {str(e)}")

@@ -77,6 +77,6 @@ class FileHandler:
         """获取文件访问URL"""
         try:
             relative_path = Path(file_path).relative_to(self.upload_dir)
-            return f"/uploads/{relative_path}"
+            return f"uploads/{relative_path}"
         except Exception:
-            return f"/uploads/{Path(file_path).name}"
+            return f"uploads/{Path(file_path).name}"

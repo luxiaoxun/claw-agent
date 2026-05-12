@@ -35,8 +35,8 @@ class AgentPrompt:
     分析用户的问题，判断应该使用哪个技能来处理。你需要从下面的技能列表中选择最合适的技能。如果找不到合适的技能或工具，就基于内置知识和对用户提供内容的理解进行回答，不可以随便瞎编答案。
 
     ### 第二步：加载技能
-    使用 `file_read` 工具读取选中技能的 SKILL.md 文件。
-    - 格式: `{{"path": "SKILL.md", "skill_name": "技能名称"}}`
+    使用 `skill_load` 工具读取选中技能的 SKILL.md 文件。
+    - 格式: `{{"skill_name": "技能名称"}}`
 
     ### 第三步：执行任务
     技能文件会告诉你：
@@ -53,6 +53,7 @@ class AgentPrompt:
     - 严格按照技能文件要求的格式返回结果
 
     ## 可用工具列表
+    - skill_load: Load skill contents
     - file_read: Read file contents
     - file_write: Write to file
     - file_edit: Edit existing file

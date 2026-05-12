@@ -399,8 +399,8 @@ const sendFile = (file) => {
     ws.value.send(buffer)
 
     // 在聊天界面显示文件上传消息
-    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2)
-    addMessage('用户', `📎 上传文件: ${file.name} (${fileSizeMB} MB)`, 'user')
+    const formattedSize = formatFileSize(file.size)
+    addMessage('用户', `📎 上传文件: ${file.name} (${formattedSize})`, 'user')
     addMessage('系统', `文件上传中...`, 'system')
   }
 
@@ -463,18 +463,19 @@ const handleFileSelect = (e) => {
   fileInput.value.value = ''
 }
 
+
+// 格式化文件大小（字节 -> 可读格式）
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 // 接收文件上传成功的消息
 const handleFileReceived = (data) => {
   const fileInfo = data.file_info
-
-  // 格式化文件大小（字节 -> 可读格式）
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
 
   const formattedSize = formatFileSize(fileInfo.size)
 
