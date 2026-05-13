@@ -43,9 +43,15 @@ class WebSocketService:
                 try:
                     message = await websocket.receive()
                 except WebSocketDisconnect:
+                    logger.info(f"WebSocket 客户端断开连接: {client_id}")
                     break
                 except Exception as e:
-                    logger.error(f"接收消息失败: {str(e)}")
+                    # 检查是否是断开相关的异常
+                    error_msg = str(e)
+                    if "disconnect" in error_msg.lower() or "close" in error_msg.lower():
+                        logger.info(f"WebSocket 客户端断开: {client_id}, {error_msg}")
+                    else:
+                        logger.error(f"接收消息失败: {error_msg}")
                     break
 
                 # 4. 消息分发

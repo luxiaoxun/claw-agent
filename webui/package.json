@@ -8,6 +8,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "axios": "^1.16.0",
+    "dayjs": "^1.11.20",
+    "element-plus": "^2.14.0",
+    "marked": "^18.0.3",
+    "sass": "^1.99.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {

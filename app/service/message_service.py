@@ -71,8 +71,8 @@ class MessageService:
             session.close()
 
     def load_messages(self, session_id: str,
-                      limit: int = 50,
-                      offset: int = 0,
+                      limit: int = None,
+                      offset: int = None,
                       order_desc: bool = False) -> List[Dict]:
         """
         加载会话的对话轮次
@@ -98,7 +98,10 @@ class MessageService:
             else:
                 query = query.order_by(MessageModel.create_time.asc())
 
-            rounds = query.limit(limit).offset(offset).all()
+            if limit and offset:
+                rounds = query.limit(limit).offset(offset).all()
+            else:
+                rounds = query.all()
 
             return [round_.to_dict() for round_ in rounds]
 

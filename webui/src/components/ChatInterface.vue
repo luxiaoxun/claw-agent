@@ -1,21 +1,24 @@
 <template>
-  <div>
-    <h2>AI Agent测试</h2>
-
+  <div class="chat-container">
     <!-- 消息输出区域 -->
-    <div
-        class="output"
-        ref="outputRef"
+    <el-card class="output" ref="outputRef" shadow="hover">
+      <div
+        v-if="dragActive"
+        class="drag-overlay"
         @dragenter="handleDragEnter"
         @dragleave="handleDragLeave"
         @dragover="handleDragOver"
         @drop="handleDrop"
-        :class="{ 'drag-active': dragActive }"
-    >
-      <div v-if="dragActive" class="drag-overlay">
+      >
         <div class="drag-content">
-          📎 释放文件以上传
+          <el-icon :size="32"><Upload /></el-icon>
+          <span style="margin-top: 8px;">释放文件以上传</span>
         </div>
+      </div>
+
+      <div v-if="loadingHistory" class="loading-history">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        加载历史消息...
       </div>
 
       <div
@@ -24,32 +27,27 @@
           :class="msg.className"
           v-html="msg.html"
       ></div>
-    </div>
+    </el-card>
 
     <!-- 输入区域 -->
     <div class="input-area">
-      <input
-          type="text"
-          v-model="inputMessage"
-          @keypress="handleKeyPress"
-          placeholder="输入消息或拖拽文件到上方区域..."
-          :disabled="status !== 'connected'"
+      <el-input
+        v-model="inputMessage"
+        type="textarea"
+        placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+        :rows="3"
+        :autosize="{ minRows: 3, maxRows: 6 }"
+        resize="none"
+        @keydown.enter.exact.prevent="sendMessage"
+        @keydown.enter.shift="handleShiftEnter"
       />
-      <div class="button-group">
-        <button @click="openFileSelector" class="file-btn" title="上传文件">
-          📎
-        </button>
-        <button
-            @click="sendMessage"
-            :disabled="status !== 'connected' || !inputMessage.trim()"
-            id="sendBtn"
-        >
-          发送
-        </button>
-        <button @click="newSession" id="newBtn">
-          新建会话
-        </button>
-      </div>
+      <el-button
+        circle
+        @click="openFileSelector"
+        title="上传文件"
+      >
+        <el-icon><Upload /></el-icon>
+      </el-button>
     </div>
 
     <!-- 隐藏的文件输入 -->
@@ -62,36 +60,57 @@
 
     <!-- 状态栏 -->
     <div :class="['status', statusClass]">
-      状态: {{ statusText }}
-      <span v-if="dragActive" style="margin-left: 10px; color: #2196f3;">
-        📎 拖拽文件到此处上传
+      <el-tag :type="statusTagType" size="small">{{ statusText }}</el-tag>
+      <span v-if="currentSessionId" style="margin-left: 10px; color: #909399; font-size: 12px;">
+        会话: {{ currentSessionId.substring(0, 8) }}...
+      </span>
+      <span v-if="dragActive" style="margin-left: 10px; color: #2196f3; font-size: 12px;">
+        拖拽文件到此处上传
       </span>
     </div>
   </div>
 </template>
 
 <script setup>
-import {ref, computed, onMounted, onUnmounted, nextTick} from 'vue'
+import {ref, computed, onMounted, onUnmounted, nextTick, watch} from 'vue'
+import { ElIcon, ElTag } from 'element-plus'
+import { Upload, Loading } from '@element-plus/icons-vue'
+import { marked } from 'marked'
 
-// 响应式数据
+// 配置 marked 选项
+marked.setOptions({
+  breaks: true,      // 换行转换为 <br>
+  gfm: true          // GitHub 风格 markdown
+})
+
+const props = defineProps({
+  sessionId: {
+    type: String,
+    default: null
+  }
+})
+
+const emit = defineEmits(['session-created'])
+
 const ws = ref(null)
-const sessionId = ref(null)
+const sessionId = ref(props.sessionId)
 const messages = ref([])
 const inputMessage = ref('')
-const status = ref('connecting') // connecting, connected, processing, disconnected
+const status = ref('idle')
 const outputRef = ref(null)
 const reconnectAttempts = ref(0)
 const currentResponseIndex = ref(-1)
 const currentResponseContent = ref('')
+const loadingHistory = ref(false)
 
-const maxReconnectAttempts = 5
-const API_BASE_URL = 'http://localhost:5000/api'
+const API_BASE_URL = 'http://127.0.0.1:5000/api'
 
-// 计算状态文本和样式
+const currentSessionId = computed(() => sessionId.value)
+
 const statusText = computed(() => {
   switch (status.value) {
-    case 'connecting':
-      return '正在连接...'
+    case 'idle':
+      return '就绪'
     case 'connected':
       return '已连接'
     case 'processing':
@@ -103,30 +122,71 @@ const statusText = computed(() => {
   }
 })
 
-const statusClass = computed(() => {
-  return status.value
+const statusClass = computed(() => status.value)
+
+const statusTagType = computed(() => {
+  switch (status.value) {
+    case 'connected': return 'success'
+    case 'processing': return 'warning'
+    case 'disconnected': return 'danger'
+    default: return 'info'
+  }
 })
 
-// 工具函数：HTML转义
 const escapeHtml = (text) => {
   const div = document.createElement('div')
   div.textContent = text
   return div.innerHTML
 }
 
-// 滚动到底部
-const scrollToBottom = async () => {
-  await nextTick()
-  if (outputRef.value) {
-    outputRef.value.scrollTop = outputRef.value.scrollHeight
+const renderMarkdown = (content) => {
+  try {
+    return marked.parse(content)
+  } catch (e) {
+    console.error('Markdown 解析失败:', e)
+    return escapeHtml(content)
   }
 }
 
-// 添加消息
-const addMessage = (sender, content, className, isIndented = false) => {
+const scrollToBottom = async () => {
+  await nextTick()
+  if (outputRef.value) {
+    const el = outputRef.value.$el || outputRef.value
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: 'smooth'
+    })
+  }
+}
+
+const addMessage = (sender, content, className, isIndented = false, isMarkdown = false) => {
   const timestamp = new Date().toLocaleTimeString()
   const prefix = isIndented ? '&nbsp;&nbsp;&nbsp;&nbsp;' : ''
-  const html = `${prefix}<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(content)} <span style="font-size: 10px; color: #999;">${timestamp}</span>`
+
+  // 如果需要渲染markdown，先解析内容
+  const displayContent = isMarkdown ? renderMarkdown(content) : escapeHtml(content)
+
+  // 根据消息类型选择不同的容器样式
+  let containerClass = 'message-item'
+  let html = ''
+
+  if (className === 'system') {
+    // 系统消息：单行显示，sender和content合并
+    html = `<div class="${containerClass} system-message">
+      <span class="system-label">系统</span>
+      <span class="system-content">${displayContent}</span>
+    </div>`
+  } else {
+    if (className === 'user') {
+      containerClass += ' user-message'
+    } else if (className === 'assistant') {
+      containerClass += ' assistant-message'
+    }
+    html = `<div class="${containerClass}">
+      <div class="message-header"><span class="sender">${escapeHtml(sender)}</span><span class="timestamp">${timestamp}</span></div>
+      <div class="message-content">${prefix}${displayContent}</div>
+    </div>`
+  }
 
   messages.value.push({
     className,
@@ -135,22 +195,30 @@ const addMessage = (sender, content, className, isIndented = false) => {
   scrollToBottom()
 }
 
-// 创建助手响应容器
 const createResponseContainer = () => {
   currentResponseContent.value = ''
+  const timestamp = new Date().toLocaleTimeString()
+
+  const html = `<div class="message-item assistant-message">
+    <div class="message-header"><span class="sender">助手</span><span class="timestamp">${timestamp}</span></div>
+    <div class="message-content assistant-content"></div>
+  </div>`
+
   messages.value.push({
     className: 'assistant',
-    html: '<strong>助手:</strong> '
+    html
   })
   currentResponseIndex.value = messages.value.length - 1
   scrollToBottom()
 }
 
-// 追加内容到最后一个助手消息
 const appendToLastMessage = (content) => {
   currentResponseContent.value += content
   if (currentResponseIndex.value !== -1) {
-    messages.value[currentResponseIndex.value].html = `<strong>助手:</strong> ${escapeHtml(currentResponseContent.value)}`
+    messages.value[currentResponseIndex.value].html = `<div class="message-item assistant-message">
+      <div class="message-header"><span class="sender">助手</span></div>
+      <div class="message-content assistant-content">${renderMarkdown(currentResponseContent.value)}</div>
+    </div>`
     scrollToBottom()
   } else {
     createResponseContainer()
@@ -158,7 +226,6 @@ const appendToLastMessage = (content) => {
   }
 }
 
-// 关闭WebSocket
 const closeWebSocket = () => {
   if (ws.value && ws.value.readyState === WebSocket.OPEN) {
     console.log('关闭现有WebSocket连接...')
@@ -166,19 +233,81 @@ const closeWebSocket = () => {
   }
 }
 
-// 新建会话
-const newSession = () => {
-  if (confirm('确定要创建新会话吗？当前会话将被清除，页面将刷新以开始全新对话。')) {
-    localStorage.removeItem('last_session_id')
-    closeWebSocket()
-    window.location.reload()
+const closeSession = () => {
+  console.log('关闭当前会话...')
+  closeWebSocket()
+  sessionId.value = null
+  messages.value = []
+  inputMessage.value = ''
+  status.value = 'idle'
+  currentResponseIndex.value = -1
+  currentResponseContent.value = ''
+}
+
+const clearCurrentSession = () => {
+  if (confirm('确定要清空当前会话消息吗？')) {
+    messages.value = []
+    inputMessage.value = ''
   }
 }
 
-// WebSocket连接
+const loadSessionHistory = async (sid) => {
+  if (!sid) {
+    console.log('loadSessionHistory: sid is empty, skip')
+    return
+  }
+
+  console.log('loadSessionHistory: 开始加载会话历史', sid)
+  loadingHistory.value = true
+  messages.value = []
+  addMessage('系统', `加载会话历史: ${sid.substring(0, 8)}...`, 'system')
+
+  try {
+    const url = `${API_BASE_URL}/session/${sid}/messages`
+    console.log('loadSessionHistory: 请求URL', url)
+    const res = await fetch(url)
+    console.log('loadSessionHistory: 响应状态', res.status)
+    const data = await res.json()
+    console.log('loadSessionHistory: 响应数据', data)
+
+    if (data.code === 200 || data.code === "200") {
+      const rounds = data.data?.rounds || []
+      console.log('loadSessionHistory: 获取到轮次数量', rounds.length)
+      console.log('loadSessionHistory: rounds data:', JSON.stringify(rounds).substring(0, 200))
+
+      if (rounds.length === 0) {
+        addMessage('系统', '暂无历史消息', 'system')
+      } else {
+        addMessage('系统', `加载了 ${rounds.length} 条历史消息`, 'system')
+
+        for (const round of rounds) {
+          console.log('loadSessionHistory: 加载轮次', round.round_number, round.user_message.substring(0, 50))
+          addMessage('用户', round.user_message, 'user', false, false)
+          addMessage('助手', round.ai_message, 'assistant', false, true)
+        }
+      }
+      // 加载成功后自动建立 WebSocket 连接
+      connect()
+    } else {
+      addMessage('系统', `加载历史失败: ${data.message}`, 'system')
+    }
+  } catch (e) {
+    console.error('加载历史消息失败:', e)
+    addMessage('系统', `加载历史失败: ${e.message}`, 'system')
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
 const connect = () => {
+  console.log('connect called, current ws state:', ws.value?.readyState)
+  if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+    console.log('已有连接，不需要重复连接')
+    return  // 已有连接，不需要重复连接
+  }
+
   status.value = 'connecting'
-  const wsUrl = 'ws://localhost:5000/api/chat/ws/message'
+  const wsUrl = 'ws://127.0.0.1:5000/api/chat/ws/message'
   console.log('尝试连接 WebSocket:', wsUrl)
 
   try {
@@ -203,7 +332,8 @@ const connect = () => {
           case 'session':
             if (data.session_id) {
               sessionId.value = data.session_id
-              addMessage('系统', `新会话ID: ${data.session_id.substring(0, 8)}...（本次会话）`, 'system')
+              addMessage('系统', `会话ID: ${data.session_id.substring(0, 8)}...`, 'system')
+              emit('session-created', data.session_id)
             }
             break
 
@@ -260,7 +390,6 @@ const connect = () => {
       status.value = 'disconnected'
       addMessage('系统', 'WebSocket 连接已断开', 'system')
 
-      // 自动重连
       if (reconnectAttempts.value < maxReconnectAttempts && !window.isManualClose) {
         reconnectAttempts.value++
         const delay = 5000
@@ -289,7 +418,6 @@ const connect = () => {
   }
 }
 
-// 发送消息
 const sendMessage = () => {
   const message = inputMessage.value.trim()
 
@@ -298,9 +426,14 @@ const sendMessage = () => {
     return
   }
 
+  // 如果未连接，先建立连接
   if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-    addMessage('错误', 'WebSocket 未连接，请等待连接成功后再试', 'error')
-    console.log('WebSocket 状态:', ws.value ? ws.value.readyState : 'null')
+    addMessage('系统', '正在建立连接...', 'system')
+    connect()
+    // 等待连接建立后再发送（通过onopen回调）
+    ws.value?.addEventListener('open', () => {
+      setTimeout(() => sendMessage(), 100)
+    }, { once: true })
     return
   }
 
@@ -318,55 +451,28 @@ const sendMessage = () => {
   status.value = 'processing'
 }
 
-// 键盘事件处理
-const handleKeyPress = (e) => {
-  if (e.key === 'Enter') {
-    sendMessage()
-  }
+const handleShiftEnter = (e) => {
+  // Shift+Enter inserts newline - default behavior is prevented by not handling it
 }
 
-// 清理保存的会话ID
-const clearSavedSessionId = () => {
-  localStorage.removeItem('last_session_id')
-  console.log('已清除保存的会话ID，开始全新会话')
-}
+const dragActive = ref(false)
+const fileInput = ref(null)
+const maxReconnectAttempts = 5
 
-// 生命周期钩子
-onMounted(() => {
-  console.log('页面加载，初始化全新会话...')
-  clearSavedSessionId()
-  connect()
-
-  // 页面关闭前关闭WebSocket
-  window.addEventListener('beforeunload', () => {
-    window.isManualClose = true
-    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-      ws.value.close()
-    }
-  })
-})
-
-onUnmounted(() => {
-  if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-    ws.value.close()
-  }
-})
-
-
-const dragActive = ref(false) // 拖拽激活状态
-const fileInput = ref(null)   // 文件输入引用
-
-// 发送文件
 const sendFile = (file) => {
+  // 如果未连接，先建立连接
   if (!ws.value || ws.value.readyState !== WebSocket.OPEN) {
-    addMessage('错误', 'WebSocket 未连接，无法上传文件', 'error')
+    addMessage('系统', '正在建立连接...', 'system')
+    connect()
+    ws.value?.addEventListener('open', () => {
+      setTimeout(() => sendFile(file), 100)
+    }, { once: true })
     return false
   }
 
   const reader = new FileReader()
 
   reader.onload = () => {
-    // 准备元数据
     const metadata = {
       filename: file.name,
       filetype: file.type,
@@ -374,31 +480,23 @@ const sendFile = (file) => {
       timestamp: new Date().toISOString()
     }
 
-    // 编码元数据为 JSON 字符串
     const metadataStr = JSON.stringify(metadata)
     const metadataBytes = new TextEncoder().encode(metadataStr)
     const metadataLength = metadataBytes.length
 
-    // 构建二进制数据包
-    // 格式：[4字节元数据长度][元数据JSON][文件二进制数据]
     const buffer = new ArrayBuffer(4 + metadataLength + file.size)
     const view = new DataView(buffer)
 
-    // 写入元数据长度（大端序）
     view.setUint32(0, metadataLength, false)
 
-    // 写入元数据
     const metadataBuffer = new Uint8Array(buffer, 4, metadataLength)
     metadataBuffer.set(metadataBytes)
 
-    // 写入文件数据
     const fileBuffer = new Uint8Array(buffer, 4 + metadataLength, file.size)
     fileBuffer.set(new Uint8Array(reader.result))
 
-    // 发送二进制数据
     ws.value.send(buffer)
 
-    // 在聊天界面显示文件上传消息
     const formattedSize = formatFileSize(file.size)
     addMessage('用户', `📎 上传文件: ${file.name} (${formattedSize})`, 'user')
     addMessage('系统', `文件上传中...`, 'system')
@@ -412,7 +510,6 @@ const sendFile = (file) => {
   return true
 }
 
-// 处理拖拽
 const handleDragEnter = (e) => {
   e.preventDefault()
   dragActive.value = true
@@ -434,7 +531,6 @@ const handleDrop = (e) => {
   const files = e.dataTransfer.files
   if (files.length > 0) {
     const file = files[0]
-    // 可选：添加文件大小限制（如 100MB）
     if (file.size > 100 * 1024 * 1024) {
       addMessage('错误', `文件太大: ${file.name} (超过100MB限制)`, 'error')
       return
@@ -443,12 +539,10 @@ const handleDrop = (e) => {
   }
 }
 
-// 打开文件选择器
 const openFileSelector = () => {
   fileInput.value.click()
 }
 
-// 处理文件选择
 const handleFileSelect = (e) => {
   const files = e.target.files
   if (files.length > 0) {
@@ -459,12 +553,9 @@ const handleFileSelect = (e) => {
     }
     sendFile(file)
   }
-  // 清空 input，以便重新选择同一文件
   fileInput.value.value = ''
 }
 
-
-// 格式化文件大小（字节 -> 可读格式）
 const formatFileSize = (bytes) => {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -473,45 +564,66 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// 接收文件上传成功的消息
 const handleFileReceived = (data) => {
   const fileInfo = data.file_info
-
   const formattedSize = formatFileSize(fileInfo.size)
-
-  // 显示成功消息
   addMessage('系统', `✅ 文件上传成功: ${fileInfo.name} (${formattedSize})`, 'system')
-
-  // 显示文件保存信息
   addMessage('系统', `📁 保存为: ${fileInfo.saved_name}`, 'system', true)
-
-  // 显示访问路径（如果有 URL）
   if (fileInfo.url) {
     addMessage('系统', `🔗 访问路径: ${fileInfo.url}`, 'system', true)
   }
-
-  // 可选：显示完整信息（点击可展开）
   console.log('文件上传成功详情:', fileInfo)
 }
 
+// Watch for sessionId prop changes
+watch(() => props.sessionId, (newId, oldId) => {
+  console.log('watch sessionId: old=', oldId, 'new=', newId)
+  if (newId) {
+    sessionId.value = newId
+    loadSessionHistory(newId)
+  }
+}, { immediate: true })
+
+defineExpose({ closeSession, connect })
+
+onMounted(() => {
+  console.log('页面加载，初始化聊天...')
+  // 不再自动连接，等待用户发送消息时再连接
+
+  window.addEventListener('beforeunload', () => {
+    window.isManualClose = true
+    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      ws.value.close()
+    }
+  })
+})
+
+onUnmounted(() => {
+  if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+    ws.value.close()
+  }
+})
 </script>
 
 <style scoped>
-.output {
-  position: relative;
-  margin-top: 20px;
-  border: 1px solid #ccc;
-  padding: 10px;
-  min-height: 400px;
-  max-height: 500px;
-  overflow-y: auto;
-  background-color: #f9f9f9;
-  transition: all 0.3s ease;
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  padding: 16px 20px;
 }
 
-.output.drag-active {
-  border: 2px dashed #2196f3;
-  background-color: #e3f2fd;
+.output {
+  position: relative;
+  flex: 1;
+  margin-top: 16px;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 300px;
+  overflow-y: auto;
+  background-color: #fafafa;
+  transition: all 0.3s ease;
 }
 
 .drag-overlay {
@@ -525,36 +637,40 @@ const handleFileReceived = (data) => {
   align-items: center;
   justify-content: center;
   z-index: 10;
-  pointer-events: none;
+  border-radius: 8px;
 }
 
 .drag-content {
-  background-color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   padding: 20px 40px;
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  font-size: 18px;
+  font-size: 16px;
   color: #2196f3;
-  font-weight: bold;
+}
+
+.loading-history {
+  text-align: center;
+  padding: 20px;
+  color: #666;
 }
 
 .input-area {
-  margin-top: 20px;
+  margin-top: 16px;
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  align-items: center;
 }
 
-.input-area input {
+.input-area .el-input {
   flex: 1;
-  padding: 10px;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
 }
 
 .button-group {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .file-btn {
@@ -603,74 +719,221 @@ const handleFileReceived = (data) => {
   font-style: italic;
 }
 
-.input-area {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
-}
-
-.input-area input {
+/* ===== 新消息样式 ===== */
+.output {
+  position: relative;
   flex: 1;
-  padding: 10px;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  margin-top: 16px;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 300px;
+  overflow-y: auto;
+  background-color: #f5f5f5;
+  transition: all 0.3s ease;
 }
 
-.input-area input:focus {
-  outline: none;
-  border-color: #2196f3;
+/* 消息容器 */
+:deep(.message-item) {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 用户消息 - 蓝色背景，右对齐 */
+:deep(.user-message) {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  margin-left: 60px;
+  border-bottom-right-radius: 4px;
+}
+
+/* 助手消息 - 白色背景，左对齐 */
+:deep(.assistant-message) {
+  background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%);
+  margin-right: 60px;
+  border-bottom-left-radius: 4px;
+}
+
+/* 错误消息 - 浅红色背景 */
+:deep(.error) {
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  color: #c62828;
+  border-left: 3px solid #c62828;
+}
+
+/* 系统消息 - 单行block显示，左对齐 */
+:deep(.system-message) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  background: transparent;
+  padding: 4px 12px;
+  margin: 4px 0;
+  border-radius: 16px;
+  width: 100%;
+}
+
+:deep(.system-label) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  background: #eee;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+:deep(.system-content) {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+/* 消息头部：发送者和时间 */
+:deep(.message-header) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+:deep(.message-header .sender) {
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+}
+
+:deep(.message-header .timestamp) {
+  font-size: 11px;
+  color: #999;
+}
+
+/* 消息内容 */
+:deep(.message-content) {
+  line-height: 1.6;
+  font-size: 14px;
+  color: #333;
+  word-wrap: break-word;
+}
+
+/* 助手消息内容样式 */
+:deep(.assistant-content) {
+  color: #1a1a1a;
+}
+
+/* 工具调用样式 */
+:deep(.tool-call) {
+  background: #e8f4fd;
+  color: #0066cc;
+  margin-left: 10px;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #2196f3;
+}
+
+/* 工具结果样式 */
+:deep(.tool-result) {
+  background: #f0f9f0;
+  color: #009900;
+  margin-left: 20px;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #4caf50;
+}
+
+/* Markdown 代码块样式 */
+:deep(.message-content pre) {
+  background: #2d2d2d;
+  color: #f8f8f2;
+  padding: 12px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+:deep(.message-content code) {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+}
+
+:deep(.message-content pre code) {
+  background: transparent;
+  color: inherit;
+}
+
+:deep(.message-content code:not(pre code)) {
+  background: #f0f0f0;
+  color: #c62828;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* Markdown 列表和加粗斜体 */
+:deep(.message-content ul),
+:deep(.message-content ol) {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+:deep(.message-content li) {
+  margin: 4px 0;
+}
+
+:deep(.message-content strong) {
+  color: #1565c0;
+}
+
+:deep(.message-content em) {
+  color: #666;
+}
+
+/* 引用样式 */
+:deep(.message-content blockquote) {
+  border-left: 3px solid #2196f3;
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  color: #555;
+}
+
+/* ===== 保留原有样式 ===== */
+.input-area {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.input-area :deep(.el-input) {
+  flex: 1;
 }
 
 .button-group {
   display: flex;
-  gap: 10px;
-}
-
-button {
-  padding: 10px 20px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: none;
-  border-radius: 4px;
-}
-
-button:hover:not(:disabled) {
-  opacity: 0.8;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-#newBtn {
-  background-color: #4caf50;
-  color: white;
-}
-
-#sendBtn {
-  background-color: #2196f3;
-  color: white;
+  gap: 8px;
 }
 
 .status {
-  margin-top: 10px;
-  padding: 5px;
+  margin-top: 12px;
   font-size: 12px;
-  color: #666;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.status.connected {
-  color: #4caf50;
-}
-
-.status.disconnected {
-  color: #f44336;
-}
-
-.status.processing {
-  color: #ff9800;
+.loading-history {
+  text-align: center;
+  padding: 20px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 </style>

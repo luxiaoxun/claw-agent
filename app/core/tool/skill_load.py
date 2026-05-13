@@ -28,7 +28,7 @@ def skill_load(skill_name: str) -> str:
 
     try:
         # Build skill file path
-        skill_path = workspace_dir / skill_name / "SKILL.md"
+        skill_path = workspace_dir / "skills" / skill_name / "SKILL.md"
 
         logger.info(f"Resolved skill path: {skill_path}")
 

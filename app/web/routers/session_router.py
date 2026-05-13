@@ -206,10 +206,7 @@ async def delete_session(session_id: str):
 
 @router.get("/{session_id}/messages")
 async def get_session_messages(
-        session_id: str,
-        limit: int = 50,
-        offset: int = 0,
-        order_desc: bool = False
+        session_id: str
 ):
     """
     获取会话的对话轮次列表（新接口）
@@ -217,7 +214,7 @@ async def get_session_messages(
     """
     try:
         logger.info(
-            f"获取会话轮次: session_id={session_id}, limit={limit}, offset={offset}, order_desc={order_desc}")
+            f"获取会话轮次: session_id={session_id}")
 
         # 检查会话是否存在
         session = database_service.session_service.get_session(session_id)
@@ -227,10 +224,7 @@ async def get_session_messages(
 
         # 使用 message_service 获取对话轮次
         rounds = database_service.message_service.load_messages(
-            session_id=session_id,
-            limit=limit,
-            offset=offset,
-            order_desc=order_desc
+            session_id=session_id
         )
 
         # 获取轮次总数
@@ -241,9 +235,7 @@ async def get_session_messages(
             "session_title": session.get('title', ''),
             "total": total_rounds,
             "returned": len(rounds),
-            "offset": offset,
-            "limit": limit,
-            "rounds": rounds  # 修改：messages -> rounds
+            "rounds": rounds
         }
 
         return success_response(
