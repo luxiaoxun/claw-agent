@@ -90,7 +90,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['session-created'])
+const emit = defineEmits(['session-created', 'refresh-sessions'])
 
 const ws = ref(null)
 const sessionId = ref(props.sessionId)
@@ -342,20 +342,23 @@ const connect = () => {
             break
 
           case 'tool_call':
-            addMessage('🔧 工具调用', `${data.tool_name}`, 'tool-call')
+            // 工具调用：紧凑显示
             if (data.tool_args && Object.keys(data.tool_args).length > 0) {
-              const argsStr = JSON.stringify(data.tool_args, null, 2)
-              const preview = argsStr.length > 200 ? argsStr.substring(0, 200) + '...' : argsStr
-              addMessage('   参数', preview, 'tool-call', true)
+              const argsStr = JSON.stringify(data.tool_args)
+              const preview = argsStr.length > 100 ? argsStr.substring(0, 100) + '...' : argsStr
+              addMessage('工具调用', `${data.tool_name}(${preview})`, 'tool-call')
+            } else {
+              addMessage('工具调用', `${data.tool_name}()`, 'tool-call')
             }
             break
 
           case 'tool_result':
+            // 工具结果：紧凑显示
             const resultPreview = typeof data.result === 'string'
-                ? data.result.substring(0, 200)
-                : JSON.stringify(data.result).substring(0, 200)
-            const statusIcon = data.status === 'error' ? '✗' : '✓'
-            addMessage(`${statusIcon} 工具结果`, `${data.tool_name}: ${resultPreview}${resultPreview.length >= 200 ? '...' : ''}`, 'tool-result')
+                ? data.result.substring(0, 150)
+                : JSON.stringify(data.result).substring(0, 150)
+            const statusIcon = data.status === 'error' ? '❌' : '✅'
+            addMessage('工具结果', `${statusIcon} ${resultPreview}${resultPreview.length >= 150 ? '...' : ''}`, 'tool-result')
             break
 
           case 'complete':
@@ -363,6 +366,8 @@ const connect = () => {
             status.value = 'connected'
             currentResponseIndex.value = -1
             currentResponseContent.value = ''
+            // 刷新会话列表
+            emit('refresh-sessions')
             break
 
           case 'file_received':
@@ -684,18 +689,6 @@ onUnmounted(() => {
   background-color: #7b1fa2;
 }
 
-.tool-call {
-  color: #0066cc;
-  margin-left: 10px;
-  font-size: 0.9em;
-}
-
-.tool-result {
-  color: #009900;
-  margin-left: 20px;
-  font-size: 0.9em;
-}
-
 .error {
   color: #cc0000;
 }
@@ -823,26 +816,26 @@ onUnmounted(() => {
   color: #1a1a1a;
 }
 
-/* 工具调用样式 */
+/* 工具调用样式 - 紧凑 */
 :deep(.tool-call) {
   background: #e8f4fd;
   color: #0066cc;
-  margin-left: 10px;
-  font-size: 13px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border-left: 3px solid #2196f3;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border-left: 2px solid #2196f3;
+  margin: 2px 0;
 }
 
-/* 工具结果样式 */
+/* 工具结果样式 - 紧凑 */
 :deep(.tool-result) {
   background: #f0f9f0;
   color: #009900;
-  margin-left: 20px;
-  font-size: 12px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border-left: 3px solid #4caf50;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border-left: 2px solid #4caf50;
+  margin: 2px 0;
 }
 
 /* Markdown 代码块样式 */

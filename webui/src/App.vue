@@ -35,6 +35,7 @@
           ref="chatRef"
           :key="currentSessionId"
           :session-id="currentSessionId"
+          @refresh-sessions="handleRefreshSessions"
         />
       </div>
     </template>
@@ -89,6 +90,12 @@ const handleNewSession = (sessionId) => {
     closeCurrentSession()
   }
   currentSessionId.value = sessionId
+}
+
+const handleRefreshSessions = () => {
+  if (sidebarRef.value) {
+    sidebarRef.value.fetchSessions(true)
+  }
 }
 
 // 页面刷新或关闭时关闭当前会话
