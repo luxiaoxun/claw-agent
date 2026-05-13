@@ -15,6 +15,7 @@ class SkillMetadataResponse:
     name: str
     description: str
     path: str
+    content: str = ""  # SKILL.md 文件内容
     has_references: bool = False
     has_scripts: bool = False
     has_assets: bool = False
@@ -25,6 +26,7 @@ class SkillMetadataResponse:
             "name": self.name,
             "description": self.description,
             "path": self.path,
+            "content": self.content,
             "has_references": self.has_references,
             "has_scripts": self.has_scripts,
             "has_assets": self.has_assets
@@ -97,7 +99,7 @@ async def list_skills(request: Request):
 
 @router.get("/{skill_name}")
 async def get_skill(skill_name: str, request: Request):
-    """获取单个Skill信息"""
+    """获取单个Skill信息（含SKILL.md内容）"""
     try:
         skill_manager = request.app.state.skill_manager
 
@@ -111,10 +113,22 @@ async def get_skill(skill_name: str, request: Request):
             logger.warning(f"Skill {skill_name} 不存在")
             return fail_response(message=f"Skill {skill_name} 不存在")
 
+        # 读取 SKILL.md 文件内容
+        import os
+        skill_md_path = os.path.join(skill_metadata.path, "SKILL.md")
+        content = ""
+        if os.path.exists(skill_md_path):
+            try:
+                with open(skill_md_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                logger.warning(f"读取SKILL.md失败: {skill_name}, {e}")
+
         skill_response = SkillMetadataResponse(
             name=skill_metadata.name,
             description=skill_metadata.description,
             path=skill_metadata.path,
+            content=content,
             has_references=skill_metadata.has_references,
             has_scripts=skill_metadata.has_scripts,
             has_assets=skill_metadata.has_assets
