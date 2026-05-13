@@ -76,12 +76,38 @@ class FileMessageHandler:
                 await self._send_error(websocket, "File data is empty")
                 return
 
-            # 5. 获取会话信息
+            # 5. 确保会话管理器存在（如果没有则创建）
             session_info = self.connection_manager.get_session_info(client_id)
-            if not session_info:
-                logger.error(f"客户端 {client_id} 的会话信息不存在")
-                await self._send_error(websocket, "Session not found")
-                return
+            new_session_created = False
+
+            if not session_info or not session_info.get("initialized"):
+                # 需要获取或创建会话管理器
+                session_id = session_info.get("session_id") if session_info else None
+                user_id = session_info.get("user_id") if session_info else None
+                try:
+                    session_manager = await self.connection_manager.get_or_create_session_manager(
+                        client_id=client_id,
+                        session_id=session_id,
+                        user_id=user_id
+                    )
+                    session_info = {
+                        "session_id": session_manager.session_id,
+                        "user_id": user_id,
+                        "initialized": True
+                    }
+                    new_session_created = True
+                    logger.info(f"文件上传前创建会话管理器: {session_manager.session_id}")
+                except Exception as e:
+                    logger.error(f"创建会话管理器失败: {e}")
+                    await self._send_error(websocket, "Failed to create session")
+                    return
+
+            # 如果创建了新会话，发送 session 消息告知前端
+            if new_session_created:
+                await websocket.send_json({
+                    "type": "session",
+                    "session_id": session_info.get("session_id")
+                })
 
             # 6. 验证文件
             filename = metadata.get('filename', 'unknown')
@@ -192,9 +218,6 @@ class FileMessageHandler:
             if success:
                 logger.info(
                     f"文件上下文已添加到会话: {file_info['original_name']}, session_id: {session_manager.session_id}")
-
-                # 可选：自动发送一条消息通知用户
-                # await self._send_file_notification(conn.get("websocket"), file_info)
             else:
                 logger.warning(f"文件上下文添加失败: {file_info['original_name']}")
 
