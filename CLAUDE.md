@@ -30,30 +30,54 @@ npm run build    # Production build
 
 ## Architecture
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        前端 (Vue 3 + Vite)                       │
+│  SessionSidebar ──── ChatWindow (WebSocket/HTTP)                │
+│  SkillManagement                                            │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        后端 (Python FastAPI)                     │
+│                                                                 │
+│  路由层 ──▶ ChatService ──▶ SessionManager ──▶ DeepAgent        │
+│                                      ├── MemoryManager          │
+│                                      └── FileManager            │
+│                    │                      │                    │
+│         ┌──────────┼──────────┐    ┌──────┴──────┐             │
+│         ▼          ▼          ▼    ▼             ▼             │
+│    AgentManager  Tools   SkillManager  Database  WebSocket       │
+│                          (workspace/skills/)                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### Backend (`app/`)
-- **core/agent/**: ReAct agent implementation using LangChain (`deep_agent.py`). Initializes LLM, loads tools (base + MCP), handles message processing (streaming and non-streaming).
-- **core/chat/**: Chat orchestration - `chat_service.py` handles HTTP requests, `session_manager.py` manages individual chat sessions, `chat_memory_manager.py` handles history with configurable context strategies (round-based, token-based, message-count-based).
-- **core/skill/**: Skill system - `skill_manager.py` loads skills from `workspace/skills/` directory (each skill has a `SKILL.md` with frontmatter containing name/description).
-- **core/tool/**: Built-in tools - file operations (read/write/edit/search), command execution, document parsing, web search/fetch, data search via Elasticsearch.
-- **core/websocket/**: WebSocket support for streaming responses and file uploads.
-- **service/**: Database and Elasticsearch query services.
-- **web/routers/**: FastAPI route handlers for chat, sessions, skills, tools.
-- **config/**: Settings via `settings.py` (reads from `.env`), logging configuration.
+- **core/agent/**: ReAct agent using LangChain (`deep_agent.py`). Initializes LLM, loads tools (base + MCP).
+- **core/chat/**: Chat orchestration - `chat_service.py` (HTTP), `session_manager.py` (会话), `chat_memory_manager.py` (历史).
+- **core/skill/**: Skill system - `skill_manager.py` loads from `workspace/skills/`.
+- **core/tool/**: Built-in tools - file operations, command execution, web search, Elasticsearch.
+- **core/websocket/**: Streaming responses and file uploads.
+- **service/**: Database and Elasticsearch services.
+- **web/routers/**: FastAPI routes (chat, sessions, skills, tools).
+- **config/**: Settings from `.env`, logging.
 
 ### Frontend (`webui/`)
 Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`) and WebSocket (`/api/chat/ws/message`).
 
 ### Tool System (`app/core/tool/`)
-Base tools: `file_read`, `file_write`, `file_edit`, `file_search`, `command_execute`, `doc_parser`, `web_fetch`, `web_search`, `search_data`. MCP tools loaded optionally from `MCP_SERVER_URL`.
-
-### Context Strategies (`app/core/chat/memory/strategy/`)
-Three configurable strategies via `CONTEXT_STRATEGY`: `round` (last N conversation rounds), `token` (last N tokens), `message_count` (last N messages). Factory in `context_strategy_factory.py`.
+- **Base tools**: `file_read`, `file_write`, `file_edit`, `file_search`, `command_execute`, `doc_parser`, `web_fetch`, `web_search`, `search_data`
+- **MCP tools**: Loaded from `MCP_SERVER_URL` (optional)
 
 ### Key Singletons
-- `agent_manager` (`app/core/agent/agent_manager.py`): Shared DeepAgent instance
-- `database_service` (`app/service/database_service.py`): Database and session/message services
-- `websocket_service` (`app/core/websocket/websocket_service.py`): WebSocket connection management
-- `skill_manager`: Loaded in `app/main.py` lifespan, accessed via `app.state.skill_manager`
+| 单例 | 路径 | 职责 |
+|------|------|------|
+| `agent_manager` | `core/agent/agent_manager.py` | 共享 DeepAgent 实例 |
+| `chat_service` | `core/chat/chat_service.py` | HTTP 聊天请求 |
+| `session_manager` | `core/chat/session_manager.py` | 会话+记忆+文件上下文 |
+| `websocket_service` | `core/websocket/websocket_service.py` | WebSocket 连接 |
+| `skill_manager` | `core/skill/skill_manager.py` | 技能加载 |
+| `database_service` | `service/database_service.py` | 数据库访问 |
 
 ### Workspace (`workspace/`)
 - `skills/`: Each subdirectory is a skill with `SKILL.md` + optional `references/`, `scripts/`, `assets/` directories.
