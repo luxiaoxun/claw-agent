@@ -31,7 +31,7 @@
         @new-session="handleNewSession"
       />
       <div class="main-content">
-        <ChatInterface
+        <ChatWindow
           ref="chatRef"
           :key="currentSessionId"
           :session-id="currentSessionId"
@@ -54,7 +54,7 @@ import { ref } from 'vue'
 import { ElIcon } from 'element-plus'
 import { ChatDotRound, Tools } from '@element-plus/icons-vue'
 import SessionSidebar from './components/SessionSidebar.vue'
-import ChatInterface from './components/ChatInterface.vue'
+import ChatWindow from './components/ChatWindow.vue'
 import SkillManagement from './components/SkillManagement.vue'
 
 const sidebarRef = ref(null)
