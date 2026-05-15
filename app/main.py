@@ -1,7 +1,7 @@
 # app/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from config.settings import settings, WORKSPACE_DIR
+from config.settings import settings, SKILLS_DIR
 from config.logging_config import setup_logging, get_logger
 from web.routers import api_router
 from web.middlewares.error_handler import register_error_handlers
@@ -9,8 +9,6 @@ from core.agent.agent_manager import agent_manager
 from core.skill.skill_manager import SkillManager
 from service.database_service import database_service
 from core.websocket.websocket_service import websocket_service
-
-import os
 
 logger = get_logger(__name__)
 
@@ -27,8 +25,7 @@ async def lifespan(app: FastAPI):
         logger.info("数据库服务容器初始化成功")
 
         # 初始化 SkillManager
-        skills_dir = os.path.join(WORKSPACE_DIR, "skills")
-        skill_manager = SkillManager.initialize(skills_dir)
+        skill_manager = SkillManager.initialize(SKILLS_DIR)
         skill_manager.load_all_skills()
         logger.info("SkillManager 初始化成功")
 

@@ -2,6 +2,7 @@
 from typing import List, Dict, Any, Optional
 from core.skill.skill_manager import SkillManager
 from config.logging_config import get_logger
+from config.settings import WORKSPACE_DIR
 
 logger = get_logger(__name__)
 
@@ -19,6 +20,9 @@ class AgentPrompt:
         self.system_prompt: Optional[str] = None
 
     def build_base_system_prompt(self) -> str:
+        logger.info("Build base system prompt")
+        logger.info(f"Workspace dir: {WORKSPACE_DIR}")
+
         # 获取所有技能描述
         all_skills = []
         if self.skill_manager:
@@ -51,6 +55,9 @@ class AgentPrompt:
     - 先加载技能工具，再执行任务
     - 技能文件中的工具指令优先级最高
     - 严格按照技能文件要求的格式返回结果
+
+    ## 工作空间目录
+    当前工作空间目录为：`{WORKSPACE_DIR}`
 
     ## 可用工具列表
     - skill_load: Load skill contents

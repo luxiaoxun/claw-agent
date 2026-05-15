@@ -4,12 +4,10 @@ const API_BASE_URL = 'http://127.0.0.1:5000/api'
 
 async function request(url, options = {}) {
   try {
+    const headers = options.headers || {}
     const res = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      }
+      headers
     })
     const data = await res.json()
 
@@ -26,12 +24,20 @@ async function request(url, options = {}) {
   }
 }
 
+function buildBody(body) {
+  if (body instanceof FormData) {
+    return body
+  }
+  return JSON.stringify(body)
+}
+
 export const api = {
   get: (url) => request(url),
 
-  post: (url, body) => request(url, {
+  post: (url, body, isFormData = false) => request(url, {
     method: 'POST',
-    body: JSON.stringify(body)
+    body: buildBody(body),
+    headers: isFormData ? {} : { 'Content-Type': 'application/json' }
   }),
 
   put: (url, body) => request(url, {

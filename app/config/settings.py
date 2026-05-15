@@ -2,7 +2,6 @@ import os
 import sys
 from typing import Optional, List
 
-from pydantic.v1.utils import ROOT_KEY
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -21,6 +20,7 @@ def get_root_dir():
 # 根目录和工作目录
 ROOT_DIR = get_root_dir()
 WORKSPACE_DIR = os.path.join(ROOT_DIR, "workspace")
+SKILLS_DIR = os.path.join(WORKSPACE_DIR, "skills")
 
 # 加载 .env 文件（从工作目录加载）
 env_path = os.path.join(ROOT_DIR, '.env')

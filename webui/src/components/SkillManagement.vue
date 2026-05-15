@@ -2,6 +2,17 @@
   <div class="skill-management">
     <div class="skill-header">
       <h2>Skill 管理</h2>
+      <el-button type="primary" @click="triggerImport">
+        <el-icon><Upload /></el-icon>
+        导入
+      </el-button>
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".zip"
+        style="display: none"
+        @change="handleFileChange"
+      />
     </div>
 
     <div v-if="loading" class="loading">
@@ -52,8 +63,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElIcon, ElCard, ElDialog, ElButton, ElTag, ElDivider } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { ElIcon, ElCard, ElDialog, ElButton, ElTag, ElDivider, ElMessage, ElMessageBox } from 'element-plus'
+import { Loading, Upload } from '@element-plus/icons-vue'
 import { api } from '../utils/api'
 
 const skills = ref([])
@@ -61,6 +72,7 @@ const loading = ref(true)
 const error = ref('')
 const dialogVisible = ref(false)
 const currentSkill = ref(null)
+const fileInput = ref(null)
 
 const fetchSkills = async () => {
   loading.value = true
@@ -93,6 +105,57 @@ const showSkillDetail = async (skill) => {
   }
 }
 
+const triggerImport = () => {
+  fileInput.value.click()
+}
+
+const handleFileChange = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  try {
+    // Preview the skill package first
+    const previewFormData = new FormData()
+    previewFormData.append('file', file)
+
+    const previewResult = await api.post('/skill/preview', previewFormData, true)
+
+    if (previewResult && previewResult.exists) {
+      // Ask user if they want to overwrite
+      try {
+        await ElMessageBox.confirm(
+          `Skill "${previewResult.name}" 已存在，是否覆盖？`,
+          '确认覆盖',
+          {
+            confirmButtonText: '覆盖',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch {
+        event.target.value = ''
+        return
+      }
+    }
+
+    // Proceed with import
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const result = await api.post('/skill/import', formData, true)
+    if (result && result.exists) {
+      ElMessage.success(`Skill "${result.name}" 覆盖成功`)
+    } else {
+      ElMessage.success('Skill导入成功')
+    }
+    fetchSkills()
+  } catch (e) {
+    ElMessage.error(`导入失败: ${e.message}`)
+  } finally {
+    event.target.value = ''
+  }
+}
+
 onMounted(() => {
   fetchSkills()
 })
@@ -107,6 +170,9 @@ onMounted(() => {
 }
 
 .skill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
 }
 

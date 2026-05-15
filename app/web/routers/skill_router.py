@@ -1,9 +1,13 @@
 # web/routers/skill_router.py
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
-from fastapi import APIRouter, Request
+import os
+import zipfile
+import shutil
+from fastapi import APIRouter, Request, UploadFile, File
 from common.response import success_response, fail_response
 from config.logging_config import get_logger
+from config.settings import SKILLS_DIR
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/skill", tags=["skill"])
@@ -143,3 +147,132 @@ async def get_skill(skill_name: str, request: Request):
     except Exception as e:
         logger.error(f"获取Skill信息失败: {str(e)}")
         return fail_response(message=f"获取Skill信息失败: {str(e)}")
+
+
+@router.post("/import")
+async def import_skill(request: Request, file: UploadFile = File(...)):
+    """导入Skill包（zip格式）"""
+    try:
+        if not file.filename.endswith('.zip'):
+            return fail_response(message="只支持zip格式的skill包")
+
+        skill_manager = request.app.state.skill_manager
+        content = await file.read()
+
+        # 打开zip文件
+        import io
+        with zipfile.ZipFile(io.BytesIO(content), 'r') as zip_ref:
+            # 获取所有条目，找到顶层目录
+            entries = zip_ref.namelist()
+            if not entries:
+                return fail_response(message="zip包内容为空")
+
+            # 找到skill顶层目录（第一个目录）
+            skill_dir_prefix = None
+            for name in entries:
+                # zip条目的分隔符是 /
+                parts = name.split('/')
+                if len(parts) >= 2 and parts[0]:
+                    skill_dir_prefix = parts[0]
+                    skill_name = parts[0]
+                    break
+
+            if not skill_dir_prefix:
+                return fail_response(message="zip包中未找到skill目录")
+
+            # 检查SKILL.md是否存在
+            skill_md_path = f"{skill_dir_prefix}/SKILL.md"
+            if skill_md_path not in entries:
+                return fail_response(message="skill包中缺少SKILL.md文件")
+
+            target_dir = os.path.join(SKILLS_DIR, skill_name)
+
+            # 检查是否已存在
+            exists = os.path.exists(target_dir)
+            if exists:
+                logger.info(f"Skill {skill_name} 已存在，准备覆盖")
+                shutil.rmtree(target_dir)
+            os.makedirs(target_dir, exist_ok=True)
+
+            # 解压所有文件到目标目录
+            for name in entries:
+                if not name.startswith(skill_dir_prefix + '/'):
+                    continue
+
+                # 获取相对路径
+                relative_path = name[len(skill_dir_prefix) + 1:]
+                if not relative_path:
+                    continue
+
+                target_path = os.path.join(target_dir, relative_path)
+
+                # 创建目录
+                if name.endswith('/'):
+                    os.makedirs(target_path, exist_ok=True)
+                else:
+                    parent_dir = os.path.dirname(target_path)
+                    if parent_dir:
+                        os.makedirs(parent_dir, exist_ok=True)
+                    with open(target_path, 'wb') as f:
+                        f.write(zip_ref.read(name))
+
+            # 重新加载skills
+            skill_manager.reload_skills()
+
+            action = "覆盖" if exists else "导入"
+            logger.info(f"Skill {skill_name} {action}成功")
+            return success_response(
+                message=f"Skill {action}成功",
+                data={"name": skill_name, "action": action, "exists": exists}
+            )
+
+    except Exception as e:
+        logger.error(f"导入Skill失败: {str(e)}")
+        return fail_response(message=f"导入Skill失败: {str(e)}")
+
+
+@router.post("/preview")
+async def preview_skill(file: UploadFile = File(...)):
+    """预览skill包（获取skill名称，检查是否已存在）"""
+    try:
+        if not file.filename.endswith('.zip'):
+            return fail_response(message="只支持zip格式的skill包")
+
+        content = await file.read()
+
+        # 打开zip文件
+        import io
+        with zipfile.ZipFile(io.BytesIO(content), 'r') as zip_ref:
+            entries = zip_ref.namelist()
+            if not entries:
+                return fail_response(message="zip包内容为空")
+
+            # 找到skill顶层目录
+            skill_dir_prefix = None
+            for name in entries:
+                parts = name.split('/')
+                if len(parts) >= 2 and parts[0]:
+                    skill_dir_prefix = parts[0]
+                    skill_name = parts[0]
+                    break
+
+            if not skill_dir_prefix:
+                return fail_response(message="zip包中未找到skill目录")
+
+            # 检查SKILL.md是否存在
+            skill_md_path = f"{skill_dir_prefix}/SKILL.md"
+            if skill_md_path not in entries:
+                return fail_response(message="skill包中缺少SKILL.md文件")
+
+            # 检查是否已存在
+            target_dir = os.path.join(SKILLS_DIR, skill_name)
+            exists = os.path.exists(target_dir)
+
+            return success_response(
+                data={"name": skill_name, "exists": exists},
+                message="预览成功"
+            )
+
+    except Exception as e:
+        logger.error(f"预览Skill失败: {str(e)}")
+        return fail_response(message=f"预览Skill失败: {str(e)}")

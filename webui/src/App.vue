@@ -60,7 +60,7 @@ import SkillManagement from './components/SkillManagement.vue'
 const sidebarRef = ref(null)
 const chatRef = ref(null)
 const currentSessionId = ref(null)
-const currentMenu = ref('session')
+const currentMenu = ref(sessionStorage.getItem('currentMenu') || 'session')
 
 const switchMenu = (menu) => {
   if (menu === currentMenu.value) return
@@ -70,6 +70,7 @@ const switchMenu = (menu) => {
     closeCurrentSession()
   }
   currentMenu.value = menu
+  sessionStorage.setItem('currentMenu', menu)
 }
 
 const closeCurrentSession = () => {
