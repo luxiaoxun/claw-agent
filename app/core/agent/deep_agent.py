@@ -5,7 +5,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMe
 from langchain.chat_models import init_chat_model, BaseChatModel
 from core.tool.mcp.mcp_client import MCPClientManager
 from core.tool import skill_load, file_read, file_write, file_edit, file_search, command_execute, doc_parser, \
-    search_data, web_fetch, web_search
+    data_search, web_fetch, web_search
 from core.agent.agent_prompt import AgentPrompt
 from utils.message_handler import MessageHandler
 from utils.token_usage import extract_token_usage_from_output
@@ -23,7 +23,7 @@ class DeepAgent:
     def __init__(self):
         # 基础工具
         self.base_tools = [skill_load, file_read, file_write, file_edit, file_search, command_execute, doc_parser,
-                           web_fetch, web_search, search_data]
+                           web_fetch, web_search, data_search]
 
         # MCP相关
         self.mcp_manager: Optional[MCPClientManager] = None

@@ -41,8 +41,8 @@ class SearchDataInput(BaseModel):
     )
 
 
-@tool("search_data", args_schema=SearchDataInput)
-async def search_data(
+@tool("data_search", args_schema=SearchDataInput)
+async def data_search(
         indexName: str,
         query: str = "",
         timeType: int = 1,

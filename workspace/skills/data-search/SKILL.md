@@ -6,7 +6,7 @@ description: 根据时间范围、IP地址、威胁等级、攻击结果等条�
 # Data Search Skill
 
 ## Overview
-本技能用于查询安全数据，包括日志、告警和安全事件。它将自然语言查询转换为 SPL 语法，并通过 `search_data` 工具执行。
+本技能用于查询安全数据，包括日志、告警和安全事件。它将自然语言查询转换为 SPL 语法，并通过 `data_search` 工具执行。
 
 ## When to Use
 - 用户要求查询日志、告警、安全事件
@@ -41,8 +41,8 @@ SPL查询语法：
   * 威胁/严重等级(severity): 低危1,中危2,高危3,超危4
   * 攻击方向(attack_direction): 外到内0,内到外1,外到外2,内到内3
 
-### Step 3: Call search_data Tool
-使用 search_data 工具，并传入以下参数：
+### Step 3: Call data_search Tool
+使用 data_search 工具，并传入以下参数：
 
 ```json
 {

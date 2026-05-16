@@ -1,6 +1,6 @@
-# Claw Agent
+# Soma
 
-一个简单的AI Agent
+Security Operations Management Assistant
 
 ## 功能特性
 - 聊天Chat：支持流式会话、文件传输
@@ -34,7 +34,7 @@
 ```bash
 # 克隆项目
 git clone <repository-url>
-cd claw-agent
+cd soma
 
 # 安装依赖
 uv sync
