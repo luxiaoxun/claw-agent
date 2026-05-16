@@ -1,6 +1,6 @@
 # Soma
 
-Security Operations Management Assistant
+Security Operations Management Agent
 
 ## 功能特性
 - 聊天Chat：支持流式会话、文件传输

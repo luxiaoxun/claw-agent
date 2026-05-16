@@ -256,7 +256,7 @@ wheels = [
 ]
 
 [[package]]
-name = "claw-agent"
+name = "soma"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

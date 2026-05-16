@@ -3,7 +3,7 @@
     <!-- 左侧导航菜单 -->
     <div class="left-nav">
       <div class="nav-header">
-        <span class="nav-title">Claw Agent</span>
+        <span class="nav-title">Soma智能体</span>
       </div>
       <div class="nav-menu">
         <div

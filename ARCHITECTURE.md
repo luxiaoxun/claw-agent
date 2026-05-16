@@ -1,4 +1,4 @@
-# Claw Agent 系统架构图
+# Soma Agent 系统架构图
 
 ## 整体架构
 

@@ -32,7 +32,7 @@ else:
 
 class Settings(BaseSettings):
     # 应用配置
-    APP_NAME: str = "Claw Agent"
+    APP_NAME: str = "Soma"
     APP_DESCRIPTION: str = "A simple AI agent"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False

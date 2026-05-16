@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx", ".doc"}
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-DOCX_SOFT_BREAK_TOKEN = "<<CLAW_AGENT_DOCX_SOFT_BREAK>>"
+DOCX_SOFT_BREAK_TOKEN = "<<SOMA_AGENT_DOCX_SOFT_BREAK>>"
 
 
 class DocParserInput(BaseModel):

@@ -1,5 +1,5 @@
 [project]
-name = "claw-agent"
+name = "soma"
 version = "0.1.0"
 description = "A simple AI agent"
 requires-python = ">=3.12"
