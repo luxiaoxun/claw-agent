@@ -5,8 +5,8 @@ Security Operations Management Agent
 ## 功能特性
 - 聊天Chat：支持流式会话、文件传输
 - 会话管理：多用户多session会话
-- 上下文memory压缩
-- Skill管理
+- Contxt：上下文memory压缩
+- Skill管理：动态加载Skill
 
 ### 内置工具
 - 文件读写、编辑、查找

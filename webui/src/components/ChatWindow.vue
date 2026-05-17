@@ -139,9 +139,119 @@ const escapeHtml = (text) => {
   return div.innerHTML
 }
 
+// 检测并格式化内容中的JSON
+const formatJsonInContent = (content) => {
+  // 尝试从内容中提取并格式化 JSON
+  // 支持对象 { ... } 和数组 [ ... ]
+  try {
+    // 先尝试直接解析整个内容是否为 JSON
+    const trimmed = content.trim()
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(content)
+        return '```json\n' + JSON.stringify(parsed, null, 2) + '\n```'
+      } catch (e) {
+        // 不是完整 JSON，继续检测内部片段
+      }
+    }
+
+    // 检测内部的 JSON 片段
+    // 匹配 { ... } 或 [ ... ]，支持嵌套
+    const results = []
+    let i = 0
+
+    while (i < content.length) {
+      const ch = content[i]
+      if (ch === '{') {
+        // 尝试匹配对象
+        let depth = 0
+        let end = -1
+        for (let j = i; j < content.length; j++) {
+          if (content[j] === '{') depth++
+          else if (content[j] === '}') {
+            depth--
+            if (depth === 0) {
+              end = j + 1
+              break
+            }
+          }
+        }
+        if (end !== -1) {
+          const jsonStr = content.slice(i, end)
+          try {
+            const parsed = JSON.parse(jsonStr)
+            results.push({
+              start: i,
+              end: end,
+              formatted: '```json\n' + JSON.stringify(parsed, null, 2) + '\n```'
+            })
+            i = end
+            continue
+          } catch (e) {
+            // 不是有效 JSON
+          }
+        }
+      } else if (ch === '[') {
+        // 尝试匹配数组
+        let depth = 0
+        let end = -1
+        for (let j = i; j < content.length; j++) {
+          if (content[j] === '[') depth++
+          else if (content[j] === ']') {
+            depth--
+            if (depth === 0) {
+              end = j + 1
+              break
+            }
+          }
+        }
+        if (end !== -1) {
+          const jsonStr = content.slice(i, end)
+          try {
+            const parsed = JSON.parse(jsonStr)
+            results.push({
+              start: i,
+              end: end,
+              formatted: '```json\n' + JSON.stringify(parsed, null, 2) + '\n```'
+            })
+            i = end
+            continue
+          } catch (e) {
+            // 不是有效 JSON
+          }
+        }
+      }
+      i++
+    }
+
+    // 如果没有找到有效 JSON，返回原内容
+    if (results.length === 0) {
+      return content
+    }
+
+    // 替换内容中所有检测到的 JSON
+    let formattedContent = ''
+    let offset = 0
+    for (const item of results) {
+      if (item.start >= offset) {
+        formattedContent += content.slice(offset, item.start)
+        formattedContent += item.formatted
+        offset = item.end
+      }
+    }
+    formattedContent += content.slice(offset)
+
+    return formattedContent
+  } catch (e) {
+    return content
+  }
+}
+
 const renderMarkdown = (content) => {
   try {
-    return marked.parse(content)
+    // 先格式化 JSON
+    const formattedContent = formatJsonInContent(content)
+    return marked.parse(formattedContent)
   } catch (e) {
     console.error('Markdown 解析失败:', e)
     return escapeHtml(content)
@@ -840,12 +950,13 @@ onUnmounted(() => {
 
 /* Markdown 代码块样式 */
 :deep(.message-content pre) {
-  background: #2d2d2d;
-  color: #f8f8f2;
+  background: #f5f5f5;
+  color: #333;
   padding: 12px 16px;
   border-radius: 6px;
   overflow-x: auto;
   margin: 8px 0;
+  border: 1px solid #e0e0e0;
 }
 
 :deep(.message-content code) {
@@ -856,6 +967,12 @@ onUnmounted(() => {
 :deep(.message-content pre code) {
   background: transparent;
   color: inherit;
+}
+
+/* JSON 代码块特殊样式 - 浅蓝背景 */
+:deep(.message-content pre.language-json) {
+  background: linear-gradient(135deg, #e3f2fd 0%, #e1f5fe 100%);
+  border-left: 3px solid #2196f3;
 }
 
 :deep(.message-content code:not(pre code)) {
