@@ -144,11 +144,14 @@ const formatJsonInContent = (content) => {
   // 尝试从内容中提取并格式化 JSON
   // 支持对象 { ... } 和数组 [ ... ]
   try {
+    // 移除内容中的 \n 换行符，便于 JSON 检测
+    const normalizedContent = content.replace(/\\n/g, '\n').replace(/\n/g, ' ')
+
     // 先尝试直接解析整个内容是否为 JSON
-    const trimmed = content.trim()
+    const trimmed = normalizedContent.trim()
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
-        const parsed = JSON.parse(content)
+        const parsed = JSON.parse(normalizedContent)
         return '```json\n' + JSON.stringify(parsed, null, 2) + '\n```'
       } catch (e) {
         // 不是完整 JSON，继续检测内部片段
@@ -160,15 +163,15 @@ const formatJsonInContent = (content) => {
     const results = []
     let i = 0
 
-    while (i < content.length) {
-      const ch = content[i]
+    while (i < normalizedContent.length) {
+      const ch = normalizedContent[i]
       if (ch === '{') {
         // 尝试匹配对象
         let depth = 0
         let end = -1
-        for (let j = i; j < content.length; j++) {
-          if (content[j] === '{') depth++
-          else if (content[j] === '}') {
+        for (let j = i; j < normalizedContent.length; j++) {
+          if (normalizedContent[j] === '{') depth++
+          else if (normalizedContent[j] === '}') {
             depth--
             if (depth === 0) {
               end = j + 1
@@ -177,7 +180,7 @@ const formatJsonInContent = (content) => {
           }
         }
         if (end !== -1) {
-          const jsonStr = content.slice(i, end)
+          const jsonStr = normalizedContent.slice(i, end)
           try {
             const parsed = JSON.parse(jsonStr)
             results.push({
@@ -195,9 +198,9 @@ const formatJsonInContent = (content) => {
         // 尝试匹配数组
         let depth = 0
         let end = -1
-        for (let j = i; j < content.length; j++) {
-          if (content[j] === '[') depth++
-          else if (content[j] === ']') {
+        for (let j = i; j < normalizedContent.length; j++) {
+          if (normalizedContent[j] === '[') depth++
+          else if (normalizedContent[j] === ']') {
             depth--
             if (depth === 0) {
               end = j + 1
@@ -206,7 +209,7 @@ const formatJsonInContent = (content) => {
           }
         }
         if (end !== -1) {
-          const jsonStr = content.slice(i, end)
+          const jsonStr = normalizedContent.slice(i, end)
           try {
             const parsed = JSON.parse(jsonStr)
             results.push({
@@ -234,12 +237,12 @@ const formatJsonInContent = (content) => {
     let offset = 0
     for (const item of results) {
       if (item.start >= offset) {
-        formattedContent += content.slice(offset, item.start)
+        formattedContent += normalizedContent.slice(offset, item.start)
         formattedContent += item.formatted
         offset = item.end
       }
     }
-    formattedContent += content.slice(offset)
+    formattedContent += normalizedContent.slice(offset)
 
     return formattedContent
   } catch (e) {
@@ -325,14 +328,25 @@ const createResponseContainer = () => {
 const appendToLastMessage = (content) => {
   currentResponseContent.value += content
   if (currentResponseIndex.value !== -1) {
+    // 流式输出时先不渲染 markdown，只转义 HTML，避免 JSON 检测不完整的问题
     messages.value[currentResponseIndex.value].html = `<div class="message-item assistant-message">
       <div class="message-header"><span class="sender">助手</span></div>
-      <div class="message-content assistant-content">${renderMarkdown(currentResponseContent.value)}</div>
+      <div class="message-content assistant-content">${escapeHtml(currentResponseContent.value)}</div>
     </div>`
     scrollToBottom()
   } else {
     createResponseContainer()
     appendToLastMessage(content)
+  }
+}
+
+// 消息完成后，渲染完整的 markdown（包含 JSON 格式化）
+const finalizeMessage = () => {
+  if (currentResponseIndex.value !== -1 && currentResponseContent.value) {
+    messages.value[currentResponseIndex.value].html = `<div class="message-item assistant-message">
+      <div class="message-header"><span class="sender">助手</span></div>
+      <div class="message-content assistant-content">${renderMarkdown(currentResponseContent.value)}</div>
+    </div>`
   }
 }
 
@@ -472,6 +486,8 @@ const connect = () => {
             break
 
           case 'complete':
+            // 消息完成时，渲染完整的 markdown（包含 JSON 格式化）
+            finalizeMessage()
             addMessage('完成', '消息处理完成', 'system')
             status.value = 'connected'
             currentResponseIndex.value = -1
@@ -504,6 +520,13 @@ const connect = () => {
       console.log('WebSocket 连接已关闭', event.code, event.reason)
       status.value = 'disconnected'
       addMessage('系统', 'WebSocket 连接已断开', 'system')
+
+      // 如果流式输出中断但还有内容，需要渲染已完成的消息
+      if (currentResponseIndex.value !== -1 && currentResponseContent.value) {
+        finalizeMessage()
+        currentResponseIndex.value = -1
+        currentResponseContent.value = ''
+      }
 
       if (reconnectAttempts.value < maxReconnectAttempts && !window.isManualClose) {
         reconnectAttempts.value++
@@ -972,7 +995,14 @@ onUnmounted(() => {
 /* JSON 代码块特殊样式 - 浅蓝背景 */
 :deep(.message-content pre.language-json) {
   background: linear-gradient(135deg, #e3f2fd 0%, #e1f5fe 100%);
-  border-left: 3px solid #2196f3;
+  border-left: 4px solid #2196f3;
+  border-radius: 8px;
+}
+
+/* 普通代码块样式 */
+:deep(.message-content pre:not(.language-json)) {
+  background: #f8f8f8;
+  border: 1px solid #e0e0e0;
 }
 
 :deep(.message-content code:not(pre code)) {
