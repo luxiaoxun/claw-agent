@@ -22,8 +22,13 @@ class AgentPrompt:
 
     def _get_skill_hash(self) -> int:
         """获取当前skills的hash值，用于检测变化"""
-        skill_names = sorted(self.skill_manager.skills.keys())
-        return hash(tuple(skill_names))
+        # 收集所有skill的name和description
+        skill_items = []
+        for name, metadata in self.skill_manager.skills.items():
+            skill_items.append((name, metadata.description))
+        # 排序保证顺序一致
+        skill_items.sort()
+        return hash(tuple(skill_items))
 
     def build_base_system_prompt(self) -> str:
         logger.info("Build base system prompt")
