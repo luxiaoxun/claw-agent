@@ -102,6 +102,16 @@ class DeepAgent:
         """构建基础系统提示词"""
         self.system_prompt = self.prompt_manager.build_base_system_prompt()
 
+    def _rebuild_agent(self):
+        """重建Agent（当skill列表变化时调用）"""
+        logger.info("正在重建Agent...")
+        # 获取最新的prompt
+        self.system_prompt = self.prompt_manager.get_dynamic_prompt()
+        # 重新创建agent
+        all_tools = self.base_tools + self.mcp_tools
+        self._create_agent(all_tools)
+        logger.info("Agent重建完成")
+
     async def process(self, message: str, chat_history: Optional[List[BaseMessage]] = None) -> Dict[str, Any]:
         """
         处理用户消息（非流式）
@@ -109,8 +119,12 @@ class DeepAgent:
         Returns:
             包含 messages 列表的字典
         """
-        if not self.agent:
-            raise RuntimeError("Agent未初始化")
+
+        # 检测skill是否有变化，如有则重建agent
+        if self.prompt_manager.is_skill_changed():
+            logger.info("检测到skill变化，重建agent")
+            self._rebuild_agent()
+            self.prompt_manager.update_skill_hash()
 
         if chat_history is None:
             chat_history = []
@@ -150,8 +164,12 @@ class DeepAgent:
         流式处理用户消息
         提供更细粒度的流式输出，包括工具调用和内容
         """
-        if not self.agent:
-            raise RuntimeError("Agent未初始化")
+
+        # 检测skill是否有变化，如有则重建agent
+        if self.prompt_manager.is_skill_changed():
+            logger.info("检测到skill变化，重建agent")
+            self._rebuild_agent()
+            self.prompt_manager.update_skill_hash()
 
         if chat_history is None:
             chat_history = []

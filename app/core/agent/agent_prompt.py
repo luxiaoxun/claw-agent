@@ -18,17 +18,26 @@ class AgentPrompt:
         """
         self.skill_manager = SkillManager.get_instance()
         self.system_prompt: Optional[str] = None
+        self._last_skill_hash: int = 0
+
+    def _get_skill_hash(self) -> int:
+        """获取当前skills的hash值，用于检测变化"""
+        skill_names = sorted(self.skill_manager.skills.keys())
+        return hash(tuple(skill_names))
 
     def build_base_system_prompt(self) -> str:
         logger.info("Build base system prompt")
         logger.info(f"Workspace dir: {WORKSPACE_DIR}")
 
-        # 获取所有技能描述
-        all_skills = []
-        if self.skill_manager:
-            all_skills = self.skill_manager.get_all_skill_descriptions()
+        prompt = self._build_prompt_content()
+        self.system_prompt = prompt
+        self._last_skill_hash = self._get_skill_hash()
+        return prompt
 
-        # 完全保持原有的提示词格式
+    def _build_prompt_content(self) -> str:
+        """构建提示词内容（每次调用获取最新skills）"""
+        all_skills = self.skill_manager.get_all_skill_descriptions()
+
         prompt = f"""你是一个智能助手，能够处理各种数据查询和分析任务。
 
     ## 工作流程
@@ -75,8 +84,19 @@ class AgentPrompt:
         for skill in all_skills:
             prompt += f"- **{skill['name']}**: {skill['description']}\n"
 
-        self.system_prompt = prompt
         return prompt
+
+    def get_dynamic_prompt(self) -> str:
+        """获取最新的提示词内容（检测skill变化）"""
+        return self._build_prompt_content()
+
+    def is_skill_changed(self) -> bool:
+        """检测skill是否有变化"""
+        return self._get_skill_hash() != self._last_skill_hash
+
+    def update_skill_hash(self):
+        """更新skill hash"""
+        self._last_skill_hash = self._get_skill_hash()
 
     def get_system_prompt(self) -> Optional[str]:
         """获取当前系统提示词"""
@@ -85,3 +105,4 @@ class AgentPrompt:
     def reset(self):
         """重置提示词"""
         self.system_prompt = None
+        self._last_skill_hash = 0
