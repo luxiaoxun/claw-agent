@@ -14,6 +14,13 @@
           <span>会话管理</span>
         </div>
         <div
+          :class="['nav-item', { active: currentMenu === 'workspace' }]"
+          @click="switchMenu('workspace')"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          <span>工作空间</span>
+        </div>
+        <div
           :class="['nav-item', { active: currentMenu === 'skill' }]"
           @click="switchMenu('skill')"
         >
@@ -40,6 +47,11 @@
       </div>
     </template>
 
+    <!-- 工作空间内容 -->
+    <template v-else-if="currentMenu === 'workspace'">
+      <WorkspaceBrowser />
+    </template>
+
     <!-- Skill管理内容 -->
     <template v-else-if="currentMenu === 'skill'">
       <div class="main-content full-width">
@@ -52,10 +64,11 @@
 <script setup>
 import { ref } from 'vue'
 import { ElIcon } from 'element-plus'
-import { ChatDotRound, Tools } from '@element-plus/icons-vue'
+import { ChatDotRound, Tools, FolderOpened } from '@element-plus/icons-vue'
 import SessionSidebar from './components/SessionSidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
 import SkillManagement from './components/SkillManagement.vue'
+import WorkspaceBrowser from './components/WorkspaceBrowser.vue'
 
 const sidebarRef = ref(null)
 const chatRef = ref(null)

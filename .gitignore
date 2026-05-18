@@ -18,6 +18,7 @@ target/
 .env
 *.db
 uploads/
+outputs/
 event.json
 
 node_modules/

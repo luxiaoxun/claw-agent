@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from config.logging_config import get_logger
-from config.settings import WORKSPACE_DIR
+from config.settings import SOMA_DIR
 from core.model.db_model import Base
 
 logger = get_logger(__name__)
@@ -15,7 +15,7 @@ class DatabaseManager:
 
     def __init__(self, db_path: str = None):
         if db_path is None:
-            db_path = os.path.join(WORKSPACE_DIR, "chat_sessions.db")
+            db_path = os.path.join(SOMA_DIR, "chat_sessions.db")
 
         self.db_path = db_path
         self.engine = None

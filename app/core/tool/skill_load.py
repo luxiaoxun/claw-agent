@@ -2,14 +2,14 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field
 from pathlib import Path
 from config.logging_config import get_logger
-from config.settings import WORKSPACE_DIR
+from config.settings import SKILLS_DIR
 
 logger = get_logger(__name__)
 
 
 class SkillLoadInput(BaseModel):
     """Input parameters for skill loading tool"""
-    skill_name: str = Field(description="Skill name to load, will read WORKSPACE_DIR/{skill_name}/SKILL.md")
+    skill_name: str = Field(description="Skill name to load, will read SKILLS_DIR/{skill_name}/SKILL.md")
 
 
 @tool("skill_load", args_schema=SkillLoadInput)
@@ -17,18 +17,18 @@ def skill_load(skill_name: str) -> str:
     """
     Load skill content from SKILL.md file.
 
-    Reads skill file from path: WORKSPACE_DIR/{skill_name}/SKILL.md
+    Reads skill file from path: SKILLS_DIR/{skill_name}/SKILL.md
 
     Parameters:
     - skill_name: Name of the skill to load
     """
-    workspace_dir = Path(WORKSPACE_DIR)
+    skill_dir = Path(SKILLS_DIR)
 
     logger.info(f"Loading skill - skill_name: {skill_name}")
 
     try:
         # Build skill file path
-        skill_path = workspace_dir / "skills" / skill_name / "SKILL.md"
+        skill_path = skill_dir / skill_name / "SKILL.md"
 
         logger.info(f"Resolved skill path: {skill_path}")
 
@@ -36,12 +36,6 @@ def skill_load(skill_name: str) -> str:
         if not skill_path.exists():
             error_msg = f"Error: Skill not found - '{skill_name}' (expected path: {skill_path})"
             logger.error(f"Skill not found: {skill_name}")
-            return error_msg
-
-        # Security check
-        if not _is_path_allowed(skill_path, workspace_dir):
-            error_msg = f"Error: Access denied - {skill_name} (path not in workspace directory)"
-            logger.error(f"Access denied: {skill_path}")
             return error_msg
 
         # Check if it's a file
@@ -67,29 +61,6 @@ def skill_load(skill_name: str) -> str:
         error_msg = f"Error reading skill: {str(e)}"
         logger.error(f"Unexpected error reading skill {skill_name}: {str(e)}")
         return error_msg
-
-
-def _is_path_allowed(file_path: Path, workspace_dir: Path) -> bool:
-    """Check if path is within allowed directory"""
-    try:
-        resolved_path = file_path.resolve()
-
-        # Allow access to workspace directory
-        workspace_resolved = workspace_dir.resolve()
-        if str(resolved_path).startswith(str(workspace_resolved)):
-            logger.debug(f"Path allowed within workspace: {resolved_path}")
-            return True
-
-        # Security check: prevent path traversal
-        if '..' in str(file_path) or str(file_path).startswith('/') or str(file_path).startswith('\\'):
-            logger.warning(f"Path traversal attempt detected: {file_path}")
-            return False
-
-        logger.warning(f"Path not allowed: {resolved_path} (outside workspace)")
-        return False
-    except Exception as e:
-        logger.error(f"Error checking path permission: {str(e)}")
-        return False
 
 
 def _read_text_file(filepath: Path) -> str:
