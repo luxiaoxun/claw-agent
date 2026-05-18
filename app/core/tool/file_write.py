@@ -3,6 +3,7 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field
 from pathlib import Path
 from difflib import unified_diff
+from datetime import datetime
 from config.logging_config import get_logger
 from config.settings import WORKSPACE_DIR
 
@@ -123,7 +124,7 @@ def _resolve_path(path: str, workspace_dir: Path) -> Path:
     """
     Resolve file path with priority:
     1. If absolute path, use it directly
-    2. Use workspace/path
+    2. If relative path, use workspace_dir/outputs/YYYY-MM-DD/path
 
     Returns:
         Resolved Path object
@@ -136,9 +137,11 @@ def _resolve_path(path: str, workspace_dir: Path) -> Path:
         logger.debug(f"Using absolute path: {path_obj}")
         return path_obj
 
-    # 2. Use workspace
-    resolved = workspace_dir / path
-    logger.debug(f"Resolved with workspace: {resolved}")
+    # 2. Relative path - write to workspace_dir/outputs/YYYY-MM-DD/
+    today = datetime.now().strftime("%Y-%m-%d")
+    outputs_dir = workspace_dir / "outputs" / today
+    resolved = outputs_dir / path
+    logger.debug(f"Resolved relative path to outputs directory: {resolved}")
     return resolved
 
 
