@@ -41,7 +41,7 @@ class FileHandler:
         elif user_id:
             file_dir = date_dir / user_id
         else:
-            file_dir = date_dir / "anonymous"
+            file_dir = date_dir / "admin"
 
         file_dir.mkdir(parents=True, exist_ok=True)
 

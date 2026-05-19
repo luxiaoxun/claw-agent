@@ -117,13 +117,17 @@ class FileMessageHandler:
                 await self._send_error(websocket, validation_result["error"])
                 return
 
+            user_id = session_info.get("user_id")
+            session_id = session_info.get("session_id")
+
             # 7. 保存文件
             file_info = await self.file_storage.save_file(
                 file_data=file_data,
                 filename=filename,
-                user_id=session_info.get("user_id"),
-                session_id=session_info.get("session_id")
+                user_id=user_id,
+                session_id=session_id
             )
+            logger.info(f"Saved file: {filename} for user: {user_id}, session: {session_id}")
 
             # 8. 获取文件访问URL
             file_url = await self.file_storage.get_file_url(file_info["path"])
