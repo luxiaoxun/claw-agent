@@ -49,6 +49,11 @@ npm run build    # Production build
 │         ▼          ▼          ▼    ▼             ▼             │
 │    AgentManager  Tools   SkillManager  Database  WebSocket       │
 │                          (workspace/skills/)                   │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              IM Channel Layer (channel/)                 │  │
+│  │  FeishuClient (ws.Client) ──▶ ChannelRouter ──▶ Response │  │
+│  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,8 +63,12 @@ npm run build    # Production build
 - **core/skill/**: Skill system - `skill_manager.py` loads from `workspace/skills/`.
 - **core/tool/**: Built-in tools - file operations, command execution, web search, Elasticsearch.
 - **core/websocket/**: Streaming responses and file uploads.
+- **channel/**: IM channel adapter layer (飞书等IM平台对接).
+  - `base.py`: `IChannelAdapter` 抽象类、`NormalizedMessage`、`IMContext` 数据类
+  - `router.py`: `ChannelRouter` 将 IM 消息路由到 SessionManager
+  - `feishu/`: 飞书适配器实现 (`feishu_client.py`, `feishu_adapter.py`, `feishu_api.py`, `feishu_parser.py`)
 - **service/**: Database and Elasticsearch services.
-- **web/routers/**: FastAPI routes (chat, sessions, skills, tools).
+- **web/routers/**: FastAPI routes (chat, sessions, skills, tools, im).
 - **config/**: Settings from `.env`, logging.
 
 ### Frontend (`webui/`)
@@ -78,6 +87,7 @@ Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`
 | `websocket_service` | `core/websocket/websocket_service.py` | WebSocket 连接 |
 | `skill_manager` | `core/skill/skill_manager.py` | 技能加载 |
 | `database_service` | `service/database_service.py` | 数据库访问 |
+| `channel_router` | `app/channel/router.py` | IM消息路由到SessionManager |
 
 ### Workspace (`workspace/`)
 - `skills/`: Each subdirectory is a skill with `SKILL.md` + optional `references/`, `scripts/`, `assets/` directories.
@@ -89,6 +99,62 @@ Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`
 - `ES_HOSTS`, `ES_USERNAME`, `ES_PASSWORD`: Elasticsearch connection for data search
 - `USE_MCP`, `MCP_SERVER_URL`: Optional MCP server for additional tools
 - `CONTEXT_STRATEGY`: Memory compression strategy (`round`, `token`, `message_count`)
+- `IM_ENABLED`: Enable IM channel adapter (true/false)
+- `FEISHU_APP_ID`, `FEISHU_APP_SECRET`: Feishu bot credentials
+
+## IM Channel Integration (飞书)
+
+Soma supports receiving and responding to messages from IM platforms via an adapter pattern.
+
+### Architecture
+
+```
+Feishu Server ←WS long-poll→ FeishuClient (daemon thread)
+                              ↓
+                         FeishuParser → NormalizedMessage
+                              ↓
+                         ChannelRouter → SessionManager → DeepAgent
+                              ↓
+                         FeishuAPI.reply_text() → Feishu Server
+```
+
+### Session Model
+
+| Chat Type | Session ID | Description |
+|-----------|------------|-------------|
+| **P2P** | `hash(platform + user_id + chat_id)` | Each user in each chat gets unique session |
+| **Group** | `hash(platform + chat_id)` | All group members share one session |
+
+### Key Components
+
+| File | Purpose |
+|------|---------|
+| `channel/base.py` | `IChannelAdapter`, `NormalizedMessage`, `IMContext` |
+| `channel/router.py` | Routes normalized IM messages to SessionManager |
+| `channel/feishu/feishu_client.py` | `lark.ws.Client` long-poll connection in daemon thread |
+| `channel/feishu/feishu_adapter.py` | `IChannelAdapter` implementation, wires event to router |
+| `channel/feishu/feishu_parser.py` | Parses `P2ImMessageReceiveV1` → `NormalizedMessage` |
+| `channel/feishu/feishu_api.py` | REST API for `message.create` / `message.reply` |
+| `web/routers/im_router.py` | IM status/config API endpoints |
+
+### Startup Flow
+
+1. `main.py` lifespan: if `IM_ENABLED=true`, create `FeishuAdapter` and call `start()`
+2. `FeishuAdapter.start()` creates `FeishuClient` and starts `lark.ws.Client` in a **daemon thread** (avoids event loop conflict with FastAPI)
+3. `FeishuClient` registers `EventDispatcherHandler` with `register_p2_im_message_receive_v1`
+4. When a message arrives: `_on_p2_im_message_receive` → `FeishuParser.parse()` → `ChannelRouter.route_message()` → `SessionManager.process_message()` → AI response → `FeishuAPI.reply_text()`
+
+### Feishu Event Data Structure (lark-oapi 1.6.x)
+
+```
+P2ImMessageReceiveV1
+  .event.message.chat_id        → chat_id
+  .event.message.message_id     → message_id (用于回复)
+  .event.message.message_type   → text/post/image等
+  .event.message.content        → JSON string
+  .event.message.chat_type      → p2p/group
+  .event.sender.sender_id.open_id → user_id
+```
 
 ## API Endpoints
 - `POST /api/chat/message`: Send chat message (HTTP)

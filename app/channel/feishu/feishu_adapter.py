@@ -1,0 +1,91 @@
+# app/channel/feishu/feishu_adapter.py
+from typing import Callable
+from app.channel.base import IChannelAdapter, NormalizedMessage, IMContext
+from app.channel.feishu.feishu_client import FeishuClient
+from app.channel.feishu.feishu_config import feishu_settings, FeishuSettings
+from config.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+class FeishuAdapter(IChannelAdapter):
+    """
+    Feishu/Lark channel adapter implementing IChannelAdapter.
+    Uses the lark-oapi ws.Client for event receiving (long connection).
+    """
+
+    def __init__(self):
+        self._client: FeishuClient = None
+        self._started = False
+
+    @property
+    def platform_name(self) -> str:
+        return "feishu"
+
+    async def start(self):
+        """Start the Feishu WebSocket client."""
+        if self._started:
+            return
+
+        settings = FeishuSettings()
+        if not settings.app_id or not settings.app_secret:
+            logger.warning("Feishu app_id or app_secret not configured, skipping start")
+            return
+
+        self._client = FeishuClient(
+            app_id=settings.app_id,
+            app_secret=settings.app_secret,
+            event_handler=self._on_feishu_event  # receives P2ImMessageReceiveV1 data
+        )
+        self._client.start()
+        self._started = True
+        logger.info("FeishuAdapter started")
+
+    async def stop(self):
+        """Stop the Feishu WebSocket client."""
+        if self._client:
+            self._client.stop()
+            self._started = False
+            logger.info("FeishuAdapter stopped")
+
+    async def send_message(self, chat_id: str, content: str, msg_type: str = "text") -> bool:
+        """
+        Send a message to a Feishu chat.
+        For p2p chat, use open_id as receive_id; for group, use chat_id.
+        """
+        if not self._client:
+            logger.error("Feishu client not started")
+            return False
+
+        return self._client.send_text("chat_id", chat_id, content)
+
+    def _on_feishu_event(self, data: "lark.P2ImMessageReceiveV1"):
+        """
+        Callback when Feishu sends a P2P message event.
+        Parses the raw data into NormalizedMessage and routes to ChannelRouter.
+
+        Args:
+            data: P2ImMessageReceiveV1 event from lark-oapi
+        """
+        from app.channel.router import channel_router
+        from app.channel.feishu.feishu_parser import FeishuParser
+
+        try:
+            # Parse Feishu event into NormalizedMessage
+            normalized = FeishuParser.parse(data)
+            if not normalized:
+                logger.warning(f"Could not parse Feishu event: {data}")
+                return
+
+            logger.info(f"Feishu event: user={normalized.user_id}, chat={normalized.chat_id}, content={normalized.content[:50]}...")
+
+            # Route the message asynchronously (non-blocking for Feishu event callback)
+            import asyncio
+            asyncio.create_task(channel_router.route_message(normalized))
+
+        except Exception as e:
+            logger.error(f"Error handling Feishu event: {e}", exc_info=True)
+
+    def get_event_handler(self) -> Callable:
+        """Return the event handler for this adapter."""
+        return self._on_feishu_event

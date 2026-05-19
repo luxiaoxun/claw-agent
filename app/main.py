@@ -38,6 +38,16 @@ async def lifespan(app: FastAPI):
         app.state.agent_manager = agent_manager
         app.state.websocket_service = websocket_service
 
+        # 初始化 IM Channel 适配器 (飞书)
+        if settings.IM_ENABLED:
+            from app.channel.feishu import FeishuAdapter
+            feishu_adapter = FeishuAdapter()
+            await feishu_adapter.start()
+            app.state.feishu_adapter = feishu_adapter
+            logger.info("Feishu channel adapter 已启动")
+        else:
+            logger.info("IM channel 未启用 (IM_ENABLED=false)")
+
         logger.info("系统初始化成功")
     except Exception as e:
         logger.error(f"系统初始化失败: {e}")
@@ -50,6 +60,11 @@ async def lifespan(app: FastAPI):
     # 关闭时清理
     logger.info("系统关闭，清理资源...")
     try:
+        # 关闭 IM Channel 适配器
+        if hasattr(app.state, 'feishu_adapter') and app.state.feishu_adapter:
+            await app.state.feishu_adapter.stop()
+            logger.info("Feishu channel adapter 已关闭")
+
         # 关闭数据库服务容器
         database_service.close()
         logger.info("数据库服务容器已关闭")
