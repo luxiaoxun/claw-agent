@@ -55,7 +55,7 @@ class FeishuClient:
                 self.app_id,
                 self.app_secret,
                 event_handler=self.event_dispatcher,
-                log_level=lark.LogLevel.DEBUG,
+                log_level=lark.LogLevel.INFO,
             )
             # Run in a separate thread to avoid event loop conflict with FastAPI
             self._thread = threading.Thread(target=self.ws_client.start, daemon=True)

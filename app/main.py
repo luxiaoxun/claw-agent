@@ -45,6 +45,12 @@ async def lifespan(app: FastAPI):
             await feishu_adapter.start()
             app.state.feishu_adapter = feishu_adapter
             logger.info("Feishu channel adapter 已启动")
+
+            # 同时启动企业微信适配器
+            from app.channel.wecom import wecom_adapter
+            await wecom_adapter.start()
+            app.state.wecom_adapter = wecom_adapter
+            logger.info("WeCom channel adapter 已启动")
         else:
             logger.info("IM channel 未启用 (IM_ENABLED=false)")
 
@@ -64,6 +70,10 @@ async def lifespan(app: FastAPI):
         if hasattr(app.state, 'feishu_adapter') and app.state.feishu_adapter:
             await app.state.feishu_adapter.stop()
             logger.info("Feishu channel adapter 已关闭")
+
+        if hasattr(app.state, 'wecom_adapter') and app.state.wecom_adapter:
+            await app.state.wecom_adapter.stop()
+            logger.info("WeCom channel adapter 已关闭")
 
         # 关闭数据库服务容器
         database_service.close()

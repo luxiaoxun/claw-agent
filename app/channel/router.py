@@ -97,17 +97,18 @@ class ChannelRouter(IChannelRouter):
             message: Original normalized message (to know where to reply)
         """
         try:
-            from app.channel.feishu.feishu_api import FeishuAPI
-            from app.channel.feishu.feishu_config import feishu_settings
-
             if message.platform == "feishu":
+                from app.channel.feishu.feishu_api import FeishuAPI
+                from app.channel.feishu.feishu_config import feishu_settings
                 api = FeishuAPI(feishu_settings.app_id, feishu_settings.app_secret)
-                # Reply in thread using the original message_id
                 if message.message_id:
                     api.reply_text(message.message_id, response)
                 else:
-                    # Fallback to sending to chat if no message_id
                     api.send_text("chat_id", message.chat_id, response)
+
+            elif message.platform == "wecom":
+                from app.channel.wecom import wecom_adapter as wc_adapter
+                await wc_adapter.reply_to_message(message, response)
 
         except Exception as e:
             logger.error(f"Error sending response: {e}", exc_info=True)
