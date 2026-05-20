@@ -4,6 +4,7 @@ from config.logging_config import get_logger
 from service.database_manager import DatabaseManager
 from service.session_service import SessionService
 from service.message_service import MessageService
+from service.channel_service import ChannelService
 
 logger = get_logger(__name__)
 
@@ -27,6 +28,7 @@ class DatabaseService:
         self.db_manager: Optional[DatabaseManager] = None
         self.session_service: Optional[SessionService] = None
         self.message_service: Optional[MessageService] = None
+        self.channel_service: Optional[ChannelService] = None
         self._initialized = True
 
     def initialize(self, db_path: str = None) -> None:
@@ -42,6 +44,7 @@ class DatabaseService:
         # 初始化服务类
         self.session_service = SessionService(self.db_manager)
         self.message_service = MessageService(self.db_manager)
+        self.channel_service = ChannelService(self.db_manager)
 
         logger.info("数据库服务容器初始化完成")
 
@@ -52,6 +55,7 @@ class DatabaseService:
             self.db_manager = None
             self.session_service = None
             self.message_service = None
+            self.channel_service = None
             logger.info("数据库服务容器已关闭")
 
     def is_initialized(self) -> bool:

@@ -2,7 +2,6 @@
 from typing import Callable
 from app.channel.base import IChannelAdapter, NormalizedMessage
 from app.channel.wecom.wecom_client import WeComClient
-from app.channel.wecom.wecom_config import wecom_settings, WeComSettings
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -17,25 +16,33 @@ class WeComAdapter(IChannelAdapter):
     def __init__(self):
         self._client: WeComClient = None
         self._started = False
-        self._frame_cache: dict = {}  # Cache frames for response routing
+        self._frame_cache: dict = {}
+        self._channel_id: int = None
+        self._config: dict = None
 
     @property
     def platform_name(self) -> str:
         return "wecom"
 
-    async def start(self):
-        """Start the WeCom WebSocket client."""
+    def start(self):
+        """Start the WeCom WebSocket client using config from DB or env."""
         if self._started:
             return
 
-        settings = WeComSettings()
-        if not settings.bot_id or not settings.bot_secret:
+        bot_id = None
+        bot_secret = None
+
+        if self._config:
+            bot_id = self._config.get('bot_id')
+            bot_secret = self._config.get('bot_secret')
+
+        if not bot_id or not bot_secret:
             logger.warning("WeCom bot_id or bot_secret not configured, skipping start")
             return
 
         self._client = WeComClient(
-            bot_id=settings.bot_id,
-            bot_secret=settings.bot_secret,
+            bot_id=bot_id,
+            bot_secret=bot_secret,
             event_handler=self._on_wecom_event
         )
         import threading
@@ -44,14 +51,19 @@ class WeComAdapter(IChannelAdapter):
         self._started = True
         logger.info("WeComAdapter started")
 
-    async def stop(self):
+    def start_with_config(self, config: dict):
+        """Start with config from database."""
+        self._config = config
+        self.start()
+
+    def stop(self):
         """Stop the WeCom WebSocket client."""
         if self._client:
             self._client.stop()
             self._started = False
             logger.info("WeComAdapter stopped")
 
-    async def send_message(self, chat_id: str, content: str, msg_type: str = "text") -> bool:
+    def send_message(self, chat_id: str, content: str, msg_type: str = "text") -> bool:
         """
         Send a message to WeCom chat.
         For group chat, chat_id is roomid.

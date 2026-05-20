@@ -38,21 +38,11 @@ async def lifespan(app: FastAPI):
         app.state.agent_manager = agent_manager
         app.state.websocket_service = websocket_service
 
-        # 初始化 IM Channel 适配器 (飞书)
-        if settings.IM_ENABLED:
-            from app.channel.feishu import FeishuAdapter
-            feishu_adapter = FeishuAdapter()
-            await feishu_adapter.start()
-            app.state.feishu_adapter = feishu_adapter
-            logger.info("Feishu channel adapter 已启动")
-
-            # 同时启动企业微信适配器
-            from app.channel.wecom import wecom_adapter
-            await wecom_adapter.start()
-            app.state.wecom_adapter = wecom_adapter
-            logger.info("WeCom channel adapter 已启动")
-        else:
-            logger.info("IM channel 未启用 (IM_ENABLED=false)")
+        # 初始化 IM Channel 适配器 (从数据库加载配置)
+        from app.channel.channel_manager import channel_manager
+        await channel_manager.start_all()
+        app.state.channel_manager = channel_manager
+        logger.info("Channel manager 已初始化")
 
         logger.info("系统初始化成功")
     except Exception as e:
@@ -66,14 +56,10 @@ async def lifespan(app: FastAPI):
     # 关闭时清理
     logger.info("系统关闭，清理资源...")
     try:
-        # 关闭 IM Channel 适配器
-        if hasattr(app.state, 'feishu_adapter') and app.state.feishu_adapter:
-            await app.state.feishu_adapter.stop()
-            logger.info("Feishu channel adapter 已关闭")
-
-        if hasattr(app.state, 'wecom_adapter') and app.state.wecom_adapter:
-            await app.state.wecom_adapter.stop()
-            logger.info("WeCom channel adapter 已关闭")
+        # 关闭 Channel Manager
+        if hasattr(app.state, 'channel_manager') and app.state.channel_manager:
+            await app.state.channel_manager.stop_all()
+            logger.info("Channel manager 已关闭")
 
         # 关闭数据库服务容器
         database_service.close()
@@ -89,7 +75,7 @@ async def lifespan(app: FastAPI):
             logger.info("SkillManager 已关闭")
 
         # 关闭所有活跃的 WebSocket 连接
-        websocket_service.close()
+        await websocket_service.close()
 
         logger.info("资源清理完成")
     except Exception as e:

@@ -1,6 +1,7 @@
 # app/channel/feishu/feishu_client.py
 import lark_oapi as lark
-from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody, CreateMessageRequest, CreateMessageRequestBody
+from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody, CreateMessageRequest, \
+    CreateMessageRequestBody
 import json
 from config.logging_config import get_logger
 from typing import Callable
@@ -38,7 +39,8 @@ class FeishuClient:
         data is P2ImMessageReceiveV1 from lark-oapi 1.6.x.
         """
         try:
-            logger.info(f"Feishu message received: {data.event.message.message_id if data.event.message else 'no message'}")
+            logger.info(
+                f"Feishu message received: {data.event.message.message_id if data.event.message else 'no message'}")
 
             # Call the user's event handler
             if self.event_handler:
@@ -57,8 +59,23 @@ class FeishuClient:
                 event_handler=self.event_dispatcher,
                 log_level=lark.LogLevel.INFO,
             )
-            # Run in a separate thread to avoid event loop conflict with FastAPI
-            self._thread = threading.Thread(target=self.ws_client.start, daemon=True)
+
+            def run():
+                import asyncio
+                # Replace the module-level loop so start() uses our fresh loop
+                import lark_oapi.ws.client as ws_module
+                fresh_loop = asyncio.new_event_loop()
+                ws_module.loop = fresh_loop
+                asyncio.set_event_loop(fresh_loop)
+                try:
+                    self.ws_client.start()
+                except Exception as e:
+                    logger.error(f"Feishu WebSocket error: {e}")
+                finally:
+                    fresh_loop.close()
+                    ws_module.loop = None
+
+            self._thread = threading.Thread(target=run, daemon=True)
             self._thread.start()
             logger.info("Feishu WebSocket client started in background thread")
         except Exception as e:
@@ -66,8 +83,10 @@ class FeishuClient:
             raise
 
     def stop(self):
-        """Stop the WebSocket client (ws.Client doesn't have stop, just let thread die)."""
+        """Stop the Feishu WebSocket client."""
         try:
+            if hasattr(self, '_thread') and self._thread:
+                self._thread = None
             self.ws_client = None
             logger.info("Feishu WebSocket client stopped")
         except Exception as e:
@@ -106,7 +125,8 @@ class FeishuClient:
                 logger.info(f"Feishu message sent successfully to {receive_id_type}:{receive_id}")
                 return True
             else:
-                logger.error(f"Feishu API error: code={response.code}, msg={response.msg}, log_id={response.get_log_id()}")
+                logger.error(
+                    f"Feishu API error: code={response.code}, msg={response.msg}, log_id={response.get_log_id()}")
                 return False
 
         except Exception as e:
@@ -152,7 +172,8 @@ class FeishuClient:
                 logger.info(f"Feishu reply sent successfully to message_id: {message_id}")
                 return True
             else:
-                logger.error(f"Feishu reply error: code={response.code}, msg={response.msg}, log_id={response.get_log_id()}")
+                logger.error(
+                    f"Feishu reply error: code={response.code}, msg={response.msg}, log_id={response.get_log_id()}")
                 return False
 
         except Exception as e:

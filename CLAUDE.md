@@ -52,7 +52,11 @@ npm run build    # Production build
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │              IM Channel Layer (channel/)                 │  │
-│  │  FeishuClient (ws.Client) ──▶ ChannelRouter ──▶ Response │  │
+│  │  FeishuClient / WeComClient (daemon thread)              │  │
+│  │      ↓                                                    │  │
+│  │  ChannelRouter → SessionManager → DeepAgent              │  │
+│  │      ↓                                                    │  │
+│  │  ChannelManager (管理 adapter 生命周期 from DB)           │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -65,8 +69,10 @@ npm run build    # Production build
 - **core/websocket/**: Streaming responses and file uploads.
 - **channel/**: IM channel adapter layer (飞书等IM平台对接).
   - `base.py`: `IChannelAdapter` 抽象类、`NormalizedMessage`、`IMContext` 数据类
+  - `channel_manager.py`: 从数据库加载配置，管理所有IM通道适配器生命周期
   - `router.py`: `ChannelRouter` 将 IM 消息路由到 SessionManager
   - `feishu/`: 飞书适配器实现 (`feishu_client.py`, `feishu_adapter.py`, `feishu_api.py`, `feishu_parser.py`)
+  - `wecom/`: 企业微信适配器实现 (`wecom_client.py`, `wecom_adapter.py`, `wecom_parser.py`)
 - **service/**: Database and Elasticsearch services.
 - **web/routers/**: FastAPI routes (chat, sessions, skills, tools, im).
 - **config/**: Settings from `.env`, logging.
@@ -88,6 +94,7 @@ Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`
 | `skill_manager` | `core/skill/skill_manager.py` | 技能加载 |
 | `database_service` | `service/database_service.py` | 数据库访问 |
 | `channel_router` | `app/channel/router.py` | IM消息路由到SessionManager |
+| `channel_manager` | `app/channel/channel_manager.py` | IM通道生命周期管理 |
 
 ### Workspace (`workspace/`)
 - `skills/`: Each subdirectory is a skill with `SKILL.md` + optional `references/`, `scripts/`, `assets/` directories.
@@ -99,23 +106,21 @@ Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`
 - `ES_HOSTS`, `ES_USERNAME`, `ES_PASSWORD`: Elasticsearch connection for data search
 - `USE_MCP`, `MCP_SERVER_URL`: Optional MCP server for additional tools
 - `CONTEXT_STRATEGY`: Memory compression strategy (`round`, `token`, `message_count`)
-- `IM_ENABLED`: Enable IM channel adapter (true/false)
-- `FEISHU_APP_ID`, `FEISHU_APP_SECRET`: Feishu bot credentials
 
-## IM Channel Integration (飞书)
+## IM Channel Integration
 
-Soma supports receiving and responding to messages from IM platforms via an adapter pattern.
+Soma supports receiving and responding to messages from IM platforms via an adapter pattern. Configuration is stored in SQLite database and managed via Web UI.
 
 ### Architecture
 
 ```
-Feishu Server ←WS long-poll→ FeishuClient (daemon thread)
+IM Platform ←WS long-poll→ FeishuClient / WeComClient (daemon thread)
                               ↓
-                         FeishuParser → NormalizedMessage
+                         FeishuParser / WeComParser → NormalizedMessage
                               ↓
                          ChannelRouter → SessionManager → DeepAgent
                               ↓
-                         FeishuAPI.reply_text() → Feishu Server
+                         FeishuAPI.reply_text() / WeComAdapter.reply_to_message() → IM Platform
 ```
 
 ### Session Model
@@ -125,24 +130,82 @@ Feishu Server ←WS long-poll→ FeishuClient (daemon thread)
 | **P2P** | `hash(platform + user_id + chat_id)` | Each user in each chat gets unique session |
 | **Group** | `hash(platform + chat_id)` | All group members share one session |
 
+### Database Schema
+
+**tb_channel_config** - IM通道配置表
+| Column | Type | Description |
+|--------|------|-------------|
+| id | Integer (PK) | 自增ID |
+| platform | String(50) | 平台类型：`feishu` / `wecom` |
+| name | String(255) | 用户自定义名称 |
+| enabled | Integer | 0=停用, 1=启用 |
+| config | JSON | 平台凭证（app_id/app_secret 等） |
+| description | Text | 描述 |
+| create_time | DateTime | 创建时间 |
+| update_time | DateTime | 更新时间 |
+
+**tb_channel_status** - IM通道运行时状态表
+| Column | Type | Description |
+|--------|------|-------------|
+| id | Integer (PK) | 自增ID |
+| channel_id | Integer (FK) | 关联 tb_channel_config.id |
+| status | String(50) | `connected` / `disconnected` / `error` |
+| last_heartbeat | DateTime | 最后心跳时间 |
+| error_message | Text | 错误信息 |
+| update_time | DateTime | 更新时间 |
+
 ### Key Components
 
 | File | Purpose |
 |------|---------|
-| `channel/base.py` | `IChannelAdapter`, `NormalizedMessage`, `IMContext` |
-| `channel/router.py` | Routes normalized IM messages to SessionManager |
-| `channel/feishu/feishu_client.py` | `lark.ws.Client` long-poll connection in daemon thread |
-| `channel/feishu/feishu_adapter.py` | `IChannelAdapter` implementation, wires event to router |
-| `channel/feishu/feishu_parser.py` | Parses `P2ImMessageReceiveV1` → `NormalizedMessage` |
-| `channel/feishu/feishu_api.py` | REST API for `message.create` / `message.reply` |
-| `web/routers/im_router.py` | IM status/config API endpoints |
+| `channel/base.py` | `IChannelAdapter` 抽象类、`NormalizedMessage`、`IMContext` 数据类 |
+| `channel/channel_manager.py` | 从数据库加载配置，管理所有IM通道适配器生命周期 |
+| `channel/router.py` | 将 NormalizedMessage 路由到 SessionManager，发送AI响应 |
+| `channel/feishu/feishu_client.py` | `lark.ws.Client` 长连接，接收飞书事件（daemon thread 避免 event loop 冲突） |
+| `channel/feishu/feishu_adapter.py` | `IChannelAdapter` 实现，配置从数据库或环境变量读取 |
+| `channel/feishu/feishu_parser.py` | 解析 `P2ImMessageReceiveV1` → `NormalizedMessage` |
+| `channel/feishu/feishu_api.py` | REST API 发送消息：`message.create` / `message.reply` |
+| `channel/wecom/wecom_client.py` | `aibot.WSClient` 长连接，接收企业微信事件 |
+| `channel/wecom/wecom_adapter.py` | 企业微信 `IChannelAdapter` 实现 |
+| `channel/wecom/wecom_parser.py` | 解析企业微信帧 → `NormalizedMessage` |
+| `web/routers/channel_router.py` | 通道 CRUD API（创建/更新/删除/启用/停用） |
 
-### Startup Flow
+### Web UI Channel Management
 
-1. `main.py` lifespan: if `IM_ENABLED=true`, create `FeishuAdapter` and call `start()`
-2. `FeishuAdapter.start()` creates `FeishuClient` and starts `lark.ws.Client` in a **daemon thread** (avoids event loop conflict with FastAPI)
-3. `FeishuClient` registers `EventDispatcherHandler` with `register_p2_im_message_receive_v1`
-4. When a message arrives: `_on_p2_im_message_receive` → `FeishuParser.parse()` → `ChannelRouter.route_message()` → `SessionManager.process_message()` → AI response → `FeishuAPI.reply_text()`
+导航菜单「消息通道」→ `ChannelManagement.vue`
+- 列表展示所有通道（平台/名称/状态/连接状态/创建时间）
+- 创建/编辑通道：选择平台（飞书/企业微信），填写配置信息
+- 启用/停用通道：通过开关直接控制，实时通知 ChannelManager
+- 删除通道：先停止适配器，再删除数据库记录
+
+### ChannelManager Lifecycle
+
+1. **启动时**：`main.py` lifespan 调用 `channel_manager.start_all()`
+   - 从数据库加载所有 `enabled=1` 的通道
+   - 根据 `platform` 创建对应适配器（FeishuAdapter / WeComAdapter）
+   - 调用 `adapter.start_with_config(config)` 启动长连接
+   - 更新数据库状态为 `connected`
+
+2. **运行时**：通过 Web UI 或 API 动态管理
+   - **启用通道**：`channel_router.enable_channel()` → `cm.start_channel()`
+   - **停用通道**：`channel_router.disable_channel()` → `cm.stop_channel()`
+   - **删除通道**：先 `cm.stop_channel()`，再删除数据库记录
+
+3. **关闭时**：`main.py` lifespan 调用 `channel_manager.stop_all()`
+   - 停止所有适配器，清理长连接
+
+### WeCom Event Data Structure (aibot SDK)
+
+```
+frame.body:
+  chatid       → chat_id (群聊时)
+  chattype     → 'single' / 'group'
+  content      → 消息内容（文本）
+  from.userid  → user_id
+  msgid        → message_id
+  msgtype      → 'text'
+  robotagentid → bot_id
+```
 
 ### Feishu Event Data Structure (lark-oapi 1.6.x)
 

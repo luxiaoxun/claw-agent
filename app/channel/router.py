@@ -99,16 +99,32 @@ class ChannelRouter(IChannelRouter):
         try:
             if message.platform == "feishu":
                 from app.channel.feishu.feishu_api import FeishuAPI
-                from app.channel.feishu.feishu_config import feishu_settings
-                api = FeishuAPI(feishu_settings.app_id, feishu_settings.app_secret)
-                if message.message_id:
-                    api.reply_text(message.message_id, response)
+                # Use config from ChannelManager adapter (from DB), not from env
+                from app.channel.channel_manager import channel_manager
+                adapters = channel_manager.get_all_adapters()
+                feishu_adapter = None
+                for ch_id, adapter in adapters.items():
+                    if hasattr(adapter, 'platform_name') and adapter.platform_name == "feishu":
+                        feishu_adapter = adapter
+                        break
+                if feishu_adapter and hasattr(feishu_adapter, '_config'):
+                    config = feishu_adapter._config
+                    api = FeishuAPI(config.get('app_id'), config.get('app_secret'))
+                    if message.message_id:
+                        api.reply_text(message.message_id, response)
+                    else:
+                        api.send_text("chat_id", message.chat_id, response)
                 else:
-                    api.send_text("chat_id", message.chat_id, response)
+                    logger.warning(f"No Feishu adapter found for response")
 
             elif message.platform == "wecom":
-                from app.channel.wecom import wecom_adapter as wc_adapter
-                await wc_adapter.reply_to_message(message, response)
+                from app.channel.channel_manager import channel_manager
+                adapters = channel_manager.get_all_adapters()
+                for ch_id, adapter in adapters.items():
+                    if hasattr(adapter, 'platform_name') and adapter.platform_name == "wecom":
+                        await adapter.reply_to_message(message, response)
+                        return
+                logger.warning(f"No WeCom adapter found for response, session_id={session_id}")
 
         except Exception as e:
             logger.error(f"Error sending response: {e}", exc_info=True)

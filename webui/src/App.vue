@@ -27,6 +27,13 @@
           <el-icon><Tools /></el-icon>
           <span>Skill 管理</span>
         </div>
+        <div
+          :class="['nav-item', { active: currentMenu === 'channel' }]"
+          @click="switchMenu('channel')"
+        >
+          <el-icon><Bell /></el-icon>
+          <span>消息通道</span>
+        </div>
       </div>
     </div>
 
@@ -58,17 +65,25 @@
         <SkillManagement />
       </div>
     </template>
+
+    <!-- 消息通道内容 -->
+    <template v-else-if="currentMenu === 'channel'">
+      <div class="main-content full-width">
+        <ChannelManagement />
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { ElIcon } from 'element-plus'
-import { ChatDotRound, Tools, FolderOpened } from '@element-plus/icons-vue'
+import { ChatDotRound, Tools, FolderOpened, Bell } from '@element-plus/icons-vue'
 import SessionSidebar from './components/SessionSidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
 import SkillManagement from './components/SkillManagement.vue'
 import WorkspaceBrowser from './components/WorkspaceBrowser.vue'
+import ChannelManagement from './components/ChannelManagement.vue'
 
 const sidebarRef = ref(null)
 const chatRef = ref(null)

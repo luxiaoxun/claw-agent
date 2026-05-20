@@ -51,20 +51,6 @@ class Settings(BaseSettings):
     USE_MCP: bool = os.getenv("USE_MCP", "false").lower() == "true"
     MCP_SERVER_URL: str = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8000/sse")
 
-    # IM Adapter configuration
-    IM_ENABLED: bool = os.getenv("IM_ENABLED", "false").lower() == "true"
-    IM_DEFAULT_PLATFORM: str = os.getenv("IM_DEFAULT_PLATFORM", "feishu")
-
-    # Feishu configuration
-    FEISHU_APP_ID: str = os.getenv("FEISHU_APP_ID", "")
-    FEISHU_APP_SECRET: str = os.getenv("FEISHU_APP_SECRET", "")
-    FEISHU_VERIFICATION_TOKEN: str = os.getenv("FEISHU_VERIFICATION_TOKEN", "")
-    FEISHU_ENCRYPT_KEY: str = os.getenv("FEISHU_ENCRYPT_KEY", "")
-
-    # WeCom configuration
-    WECHAT_BOT_ID: str = os.getenv("WECHAT_BOT_ID", "")
-    WECHAT_BOT_SECRET: str = os.getenv("WECHAT_BOT_SECRET", "")
-
     # Elasticsearch 连接配置
     ES_HOSTS: str = os.getenv("ES_HOSTS", "http://localhost:9200")
     ES_USERNAME: Optional[str] = os.getenv("ES_USERNAME")

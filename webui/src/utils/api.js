@@ -48,4 +48,32 @@ export const api = {
   delete: (url) => request(url, { method: 'DELETE' })
 }
 
+// Channel APIs
+export const channelApi = {
+  list: (platform, enabled) => {
+    let url = '/channel/list'
+    const params = []
+    if (platform) params.push(`platform=${platform}`)
+    if (enabled !== undefined) params.push(`enabled=${enabled}`)
+    if (params.length) url += '?' + params.join('&')
+    return api.get(url)
+  },
+
+  get: (channelId) => api.get(`/channel/${channelId}`),
+
+  create: (platform, name, config, description, enabled) => api.post('/channel/create', {
+    platform, name, config, description, enabled
+  }),
+
+  update: (channelId, data) => api.post(`/channel/${channelId}/update`, data),
+
+  delete: (channelId) => api.post(`/channel/${channelId}/delete`),
+
+  enable: (channelId) => api.post(`/channel/${channelId}/enable`),
+
+  disable: (channelId) => api.post(`/channel/${channelId}/disable`),
+
+  getStatus: (channelId) => api.get(`/channel/status/${channelId}`)
+}
+
 export { API_BASE_URL }
