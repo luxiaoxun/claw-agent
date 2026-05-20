@@ -272,8 +272,10 @@ const scrollToBottom = async () => {
   }
 }
 
-const addMessage = (sender, content, className, isIndented = false, isMarkdown = false) => {
-  const timestamp = new Date().toLocaleTimeString()
+const addMessage = (sender, content, className, isIndented = false, isMarkdown = false, timestamp = null) => {
+  const timeStr = timestamp
+    ? new Date(timestamp).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : new Date().toLocaleTimeString()
   const prefix = isIndented ? '&nbsp;&nbsp;&nbsp;&nbsp;' : ''
 
   // 如果需要渲染markdown，先解析内容
@@ -296,7 +298,7 @@ const addMessage = (sender, content, className, isIndented = false, isMarkdown =
       containerClass += ' assistant-message'
     }
     html = `<div class="${containerClass}">
-      <div class="message-header"><span class="sender">${escapeHtml(sender)}</span><span class="timestamp">${timestamp}</span></div>
+      <div class="message-header"><span class="sender">${escapeHtml(sender)}</span><span class="timestamp">${timeStr}</span></div>
       <div class="message-content">${prefix}${displayContent}</div>
     </div>`
   }
@@ -310,10 +312,10 @@ const addMessage = (sender, content, className, isIndented = false, isMarkdown =
 
 const createResponseContainer = () => {
   currentResponseContent.value = ''
-  const timestamp = new Date().toLocaleTimeString()
+  const timeStr = new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
   const html = `<div class="message-item assistant-message">
-    <div class="message-header"><span class="sender">助手</span><span class="timestamp">${timestamp}</span></div>
+    <div class="message-header"><span class="sender">助手</span><span class="timestamp">${timeStr}</span></div>
     <div class="message-content assistant-content"></div>
   </div>`
 
@@ -406,8 +408,8 @@ const loadSessionHistory = async (sid) => {
 
         for (const round of rounds) {
           console.log('loadSessionHistory: 加载轮次', round.round_number, round.user_message.substring(0, 50))
-          addMessage('用户', round.user_message, 'user', false, false)
-          addMessage('助手', round.ai_message, 'assistant', false, true)
+          addMessage('用户', round.user_message, 'user', false, false, round.create_time)
+          addMessage('助手', round.ai_message, 'assistant', false, true, round.create_time)
         }
       }
       // 加载成功后自动建立 WebSocket 连接
