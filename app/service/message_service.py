@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from config.logging_config import get_logger
-from core.model.db_model import SessionModel, MessageModel
+from model.db_model import SessionModel, MessageModel
 from service.database_manager import DatabaseManager
 from utils.message_handler import MessageHandler
 

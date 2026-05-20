@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from config.logging_config import get_logger
 from config.settings import SOMA_DIR
-from core.model.db_model import Base
+from model.db_model import Base
 
 logger = get_logger(__name__)
 

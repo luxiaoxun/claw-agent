@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from sqlalchemy import func, delete
 from config.logging_config import get_logger
-from core.model.db_model import SessionModel, MessageModel
+from model.db_model import SessionModel, MessageModel
 from service.database_manager import DatabaseManager
 
 logger = get_logger(__name__)
