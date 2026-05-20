@@ -119,6 +119,3 @@ class WeComAdapter(IChannelAdapter):
 
 # Global singleton - used by router.py
 wecom_adapter = WeComAdapter()
-
-# Alias for backward compatibility
-WeComAdapter.instance = wecom_adapter
