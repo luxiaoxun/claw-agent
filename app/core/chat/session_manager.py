@@ -88,13 +88,6 @@ class SessionManager:
             logger.error(f"SessionManager初始化失败: {str(e)}")
             raise
 
-    def _get_context_history(self) -> List[BaseMessage]:
-        """
-        获取用于 AI 上下文的最近历史消息
-        将最近的 MSG_MAX_HISTORY_LENGTH 次对话轮次转换为消息列表
-        """
-        return self.memory_manager.get_context_history()
-
     async def _get_enhanced_context(self) -> List[BaseMessage]:
         """
         获取增强的上下文（包含文件信息）
@@ -102,7 +95,9 @@ class SessionManager:
         Returns:
             增强后的消息列表
         """
-        context_history = self._get_context_history()
+
+        # 将最近的 MSG_MAX_HISTORY_LENGTH 次对话轮次转换为消息列表
+        context_history = self.memory_manager.get_context_history()
 
         # 获取文件上下文消息
         file_context_message = await self.file_manager.get_file_context_message()

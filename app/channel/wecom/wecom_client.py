@@ -71,6 +71,7 @@ class WeComClient:
     def stop(self):
         """Stop the WebSocket client."""
         try:
+            self.ws_client.disconnect()
             self.ws_client = None
             logger.info("WeCom WebSocket client stopped")
         except Exception as e:

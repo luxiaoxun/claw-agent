@@ -94,6 +94,15 @@ async def update_channel(channel_id: int, body: UpdateChannelRequest = Body(...)
     """更新通道配置"""
     try:
         logger.info(f"更新通道: channel_id={channel_id}, name={body.name}, enabled={body.enabled}")
+
+        # 先停止当前运行的适配器
+        from app.main import app
+        cm = getattr(app.state, 'channel_manager', None)
+        if cm:
+            cm.stop_channel(channel_id)
+            logger.info(f"更新通道前已停止适配器: channel_id={channel_id}")
+
+        # 更新数据库配置
         ok = get_channel_service().update_channel(
             channel_id=channel_id,
             name=body.name,
@@ -101,9 +110,16 @@ async def update_channel(channel_id: int, body: UpdateChannelRequest = Body(...)
             description=body.description,
             enabled=body.enabled
         )
+
         if ok:
             channel = get_channel_service().get_channel_with_status(channel_id)
             logger.info(f"通道更新成功: channel_id={channel_id}")
+
+            # 如果 enabled=1，用新配置重启适配器
+            if body.enabled:
+                if cm:
+                    cm.start_channel(channel)
+                    logger.info(f"通道已启用并用新配置启动适配器: channel_id={channel_id}")
             return success_response(data=channel, message="通道更新成功")
         logger.warning(f"通道更新失败: 通道不存在, channel_id={channel_id}")
         return fail_response(message="通道不存在或更新失败")
@@ -176,6 +192,35 @@ async def disable_channel(channel_id: int):
     except Exception as e:
         logger.error(f"停用通道失败: channel_id={channel_id}, error={e}")
         return fail_response(message=f"停用通道失败: {str(e)}")
+
+
+@router.post("/channel/{channel_id}/restart")
+async def restart_channel(channel_id: int):
+    """重启通道"""
+    try:
+        logger.info(f"重启通道: channel_id={channel_id}")
+        channel = get_channel_service().get_channel(channel_id)
+        if not channel:
+            logger.warning(f"重启通道失败: 通道不存在, channel_id={channel_id}")
+            return fail_response(message="通道不存在")
+
+        from app.main import app
+        cm = getattr(app.state, 'channel_manager', None)
+        if cm:
+            # 先停止
+            cm.stop_channel(channel_id)
+            logger.info(f"重启通道前已停止适配器: channel_id={channel_id}")
+            # 如果 enabled=1 再启动
+            if channel.get('enabled'):
+                cm.start_channel(channel)
+                logger.info(f"通道已用新配置启动: channel_id={channel_id}")
+            else:
+                logger.info(f"通道 enabled=0，跳过启动: channel_id={channel_id}")
+
+        return success_response(message="通道重启成功")
+    except Exception as e:
+        logger.error(f"重启通道失败: channel_id={channel_id}, error={e}")
+        return fail_response(message=f"重启通道失败: {str(e)}")
 
 
 @router.get("/channel/status/{channel_id}")

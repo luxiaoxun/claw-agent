@@ -2,7 +2,10 @@
   <div class="channel-management">
     <div class="header">
       <h2>消息通道管理</h2>
-      <el-button type="primary" @click="showCreateDialog">创建通道</el-button>
+      <div class="header-buttons">
+        <el-button type="primary" @click="showCreateDialog">创建通道</el-button>
+        <el-button type="primary" @click="loadChannels" :loading="loading">刷新列表</el-button>
+      </div>
     </div>
 
     <!-- 通道列表 -->
@@ -38,9 +41,10 @@
           {{ formatTime(row.create_time) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="editChannel(row)">编辑</el-button>
+          <el-button link type="warning" size="small" @click="restartChannel(row)">重启</el-button>
           <el-button link type="danger" size="small" @click="deleteChannel(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -249,6 +253,21 @@ const toggleEnabled = async (row) => {
   }
 }
 
+const restartChannel = async (row) => {
+  try {
+    await ElMessageBox.confirm(`确定要重启通道"${row.name}"吗?`, '确认重启', {
+      type: 'warning'
+    })
+    await channelApi.restart(row.id)
+    ElMessage.success('通道已重启')
+    loadChannels()
+  } catch (e) {
+    if (e !== 'cancel') {
+      console.error('重启通道失败:', e)
+    }
+  }
+}
+
 const getStatusType = (status) => {
   switch (status) {
     case 'connected': return 'success'
@@ -297,5 +316,10 @@ onMounted(() => {
 
 .header h2 {
   margin: 0;
+}
+
+.header-buttons {
+  display: flex;
+  gap: 8px;
 }
 </style>

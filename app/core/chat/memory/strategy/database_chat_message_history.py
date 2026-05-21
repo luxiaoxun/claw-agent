@@ -66,7 +66,7 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
                                       message_chain: List[BaseMessage]) -> None:
         """以对话轮次为单位添加消息"""
         if not self.session_id:
-            logger.warning("未提供 session_id，无法保存对话轮次")
+            logger.error("未提供 session_id，无法保存对话轮次")
             return
 
         round_id = await self._save_round_to_db(

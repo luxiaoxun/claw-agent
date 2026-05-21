@@ -73,6 +73,8 @@ export const channelApi = {
 
   disable: (channelId) => api.post(`/channel/${channelId}/disable`),
 
+  restart: (channelId) => api.post(`/channel/${channelId}/restart`),
+
   getStatus: (channelId) => api.get(`/channel/status/${channelId}`)
 }
 
