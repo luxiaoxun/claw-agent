@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.chat_history import BaseChatMessageHistory
 from config.settings import settings
 from config.logging_config import get_logger
@@ -69,22 +69,27 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
             logger.error("未提供 session_id，无法保存对话轮次")
             return
 
+        # 只保存当前轮的 ToolMessage
+        tool_messages = [msg for msg in message_chain if isinstance(msg, ToolMessage)]
+
         round_id = await self._save_round_to_db(
             user_message=user_message,
             ai_response=ai_response,
-            message_chain=message_chain
+            message_chain=tool_messages  # 只存 ToolMessage
         )
 
         if round_id:
-            # 更新内存缓存
-            self._append_to_messages(user_message, message_chain)
+            # 更新内存缓存（只用 user_message + ai_message）
+            self._messages.append(HumanMessage(content=user_message))
+            if ai_response:
+                self._messages.append(AIMessage(content=ai_response))
 
-            # 更新轮次缓存
+            # 更新轮次缓存（message_chain 只存 ToolMessage）
             self._chat_rounds.append({
                 'id': round_id,
                 'user_message': user_message,
                 'ai_message': ai_response,
-                'message_chain': MessageHandler.serialize(message_chain),
+                'message_chain': MessageHandler.serialize(tool_messages),
                 'round_number': self._next_round_number,
                 'create_time': datetime.now().isoformat()
             })
@@ -133,7 +138,7 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
                     f"下一轮次={self._next_round_number}")
 
     def get_context_messages(self, max_rounds: int = None) -> List[BaseMessage]:
-        """获取用于 AI 上下文的消息"""
+        """获取用于 AI 上下文的消息（只用 user_message + ai_message）"""
         if not self._initialized:
             return []
 
@@ -141,15 +146,10 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
 
         if len(self._chat_rounds) > max_rounds:
             recent_rounds = self._chat_rounds[-max_rounds:]
-            messages = []
-            for round_data in recent_rounds:
-                messages.append(HumanMessage(content=round_data['user_message']))
-                message_chain = round_data.get('message_chain', [])
-                if message_chain:
-                    messages.extend(MessageHandler.deserialize(message_chain))
-            return messages
+        else:
+            recent_rounds = self._chat_rounds
 
-        return self._messages.copy()
+        return self._rebuild_messages_from_rounds(recent_rounds)
 
     def clear(self) -> None:
         """清空历史（只清空内存，不清除数据库）"""
@@ -159,14 +159,17 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
         self._initialized = False
         logger.info(f"会话 {self.session_id} 的消息历史已清空")
 
-    def _rebuild_messages_from_rounds(self) -> None:
-        """从 _chat_rounds 重建完整的 _messages"""
-        self._messages = []
-        for round_data in self._chat_rounds:
-            self._messages.append(HumanMessage(content=round_data['user_message']))
-            message_chain = round_data.get('message_chain', [])
-            if message_chain:
-                self._messages.extend(MessageHandler.deserialize(message_chain))
+    def _rebuild_messages_from_rounds(self, rounds: List[Dict] = None) -> List[BaseMessage]:
+        """从轮次数据重建消息列表（只用 user_message + ai_message）"""
+        if rounds is None:
+            rounds = self._chat_rounds
+
+        messages = []
+        for round_data in rounds:
+            messages.append(HumanMessage(content=round_data['user_message']))
+            if round_data.get('ai_message'):
+                messages.append(AIMessage(content=round_data['ai_message']))
+        return messages
 
     def _append_to_messages(self, user_message: str, message_chain: List[BaseMessage]) -> None:
         """将新的轮次追加到 _messages 中"""

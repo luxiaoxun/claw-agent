@@ -43,14 +43,13 @@ class RoundBasedContextStrategy(ContextStrategy):
         if len(history.chat_rounds) <= self.max_rounds:
             return history.messages.copy()
 
-        # 只保留最近 max_rounds 轮
+        # 只保留最近 max_rounds 轮，只用 user_message + ai_message
         recent_rounds = history.chat_rounds[-self.max_rounds:]
         messages = []
         for round_data in recent_rounds:
             messages.append(HumanMessage(content=round_data['user_message']))
-            message_chain = round_data.get('message_chain', [])
-            if message_chain:
-                messages.extend(MessageHandler.deserialize(message_chain))
+            if round_data.get('ai_message'):
+                messages.append(AIMessage(content=round_data['ai_message']))
         return messages
 
     def get_strategy_name(self) -> str:
@@ -294,15 +293,14 @@ class HybridContextStrategy(ContextStrategy):
         if not history.initialized:
             return []
 
-        # 1. 先确保至少保留 min_rounds 轮
+        # 1. 先确保至少保留 min_rounds 轮（只用 user_message + ai_message）
         min_messages = []
         if len(history.chat_rounds) > self.min_rounds:
             min_rounds_data = history.chat_rounds[-self.min_rounds:]
             for round_data in min_rounds_data:
                 min_messages.append(HumanMessage(content=round_data['user_message']))
-                message_chain = round_data.get('message_chain', [])
-                if message_chain:
-                    min_messages.extend(MessageHandler.deserialize(message_chain))
+                if round_data.get('ai_message'):
+                    min_messages.append(AIMessage(content=round_data['ai_message']))
         else:
             min_messages = history.messages.copy()
 

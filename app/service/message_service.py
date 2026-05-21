@@ -40,9 +40,7 @@ class MessageService:
                 session.flush()
 
             # 使用序列化器转换消息链
-            logger.info("开始序列化消息链...")
             message_chain_json = MessageHandler.serialize(message_chain)
-            logger.info(f"序列化完成，共 {len(message_chain_json)} 条消息")
 
             # 创建消息轮次记录
             message_round = MessageModel(
