@@ -264,11 +264,25 @@ const renderMarkdown = (content) => {
 const scrollToBottom = async () => {
   await nextTick()
   if (outputRef.value) {
-    const el = outputRef.value.$el || outputRef.value
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior: 'smooth'
-    })
+    const el = outputRef.value.$el
+    if (el) {
+      // el-card 的内容在 .el-card__body 中，找到真正的滚动容器
+      const cardBody = el.querySelector('.el-card__body') || el
+      cardBody.scrollTop = cardBody.scrollHeight
+    }
+  }
+}
+
+const scrollToBottomDelayed = async () => {
+  await nextTick()
+  if (outputRef.value) {
+    const el = outputRef.value.$el
+    if (el) {
+      const cardBody = el.querySelector('.el-card__body') || el
+      setTimeout(() => {
+        cardBody.scrollTop = cardBody.scrollHeight
+      }, 50)
+    }
   }
 }
 
@@ -411,6 +425,8 @@ const loadSessionHistory = async (sid) => {
           addMessage('用户', round.user_message, 'user', false, false, round.create_time)
           addMessage('助手', round.ai_message, 'assistant', false, true, round.create_time)
         }
+        // 加载完成后滚动到底部
+        scrollToBottomDelayed()
       }
       // 加载成功后自动建立 WebSocket 连接
       connect()
