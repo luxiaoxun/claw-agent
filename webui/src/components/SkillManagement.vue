@@ -179,7 +179,7 @@ onMounted(() => {
 .skill-header h2 {
   margin: 0;
   color: #303133;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
 }
 

@@ -1,7 +1,7 @@
 <template>
   <div class="channel-management">
     <div class="header">
-      <h2>消息通道管理</h2>
+      <h2>消息通道</h2>
       <div class="header-buttons">
         <el-button type="primary" @click="showCreateDialog">创建通道</el-button>
         <el-button type="primary" @click="loadChannels" :loading="loading">刷新列表</el-button>
@@ -316,6 +316,9 @@ onMounted(() => {
 
 .header h2 {
   margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .header-buttons {
