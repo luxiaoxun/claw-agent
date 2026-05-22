@@ -44,8 +44,8 @@ uv sync
 cp .env.example .env
 # 编辑.env文件，填入你的配置
 
-# 运行项目
-uv run python app/main.py
+# 运行后端
+uv run uvicorn soma.main:app --host 0.0.0.0 --port 5000
 ```
 
 ### API docs

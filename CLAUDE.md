@@ -13,11 +13,8 @@ Soma is a Python-based AI agent with a Vue 3 web UI. It provides chat-based inte
 # Install dependencies
 uv sync
 
-# Run the server
-uv run python app/main.py
-
-# Or with uvicorn directly
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 5000
+# Start server with uvicorn
+uv run uvicorn soma.main:app --host 0.0.0.0 --port 5000
 ```
 
 ### Frontend (Vue 3/Vite)

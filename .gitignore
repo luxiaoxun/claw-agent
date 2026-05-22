@@ -16,6 +16,7 @@ target/
 .venv
 
 .env
+.env.local
 *.db
 uploads/
 outputs/
