@@ -7,6 +7,7 @@ Security Operations Management Agent
 - 会话管理：多用户多session会话
 - Contxt：上下文memory压缩
 - Skill管理：动态加载Skill
+- 消息通道：对接飞书、企业微信机器人
 
 ### 内置工具
 - 文件读写、编辑、查找
