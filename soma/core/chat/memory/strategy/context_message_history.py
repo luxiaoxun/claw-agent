@@ -99,10 +99,10 @@ class ContextChatMessageHistory(BaseChatMessageHistory):
             max_rounds = settings.MAX_MSG_HISTORY_LENGTH
             if len(self._chat_rounds) > max_rounds:
                 self._chat_rounds = self._chat_rounds[-max_rounds:]
-                self._rebuild_messages_from_rounds()
+                self._messages = self._rebuild_messages_from_rounds()
 
             self._next_round_number += 1
-            logger.info(f"保存对话轮次 {self._next_round_number - 1} 成功，当前消息数: {len(self._messages)}")
+            logger.info(f"保存对话轮次 {self._next_round_number - 1} 成功")
 
     async def load_history(self, session_id: str = None, max_rounds: int = None) -> None:
         """从数据库加载历史对话轮次"""
@@ -133,7 +133,7 @@ class ContextChatMessageHistory(BaseChatMessageHistory):
                 offset=total_count - max_rounds,
                 order_desc=False
             )
-        self._rebuild_messages_from_rounds()
+        self._messages = self._rebuild_messages_from_rounds()
 
         if self._chat_rounds:
             self._next_round_number = max(r.get('round_number', 0) for r in self._chat_rounds) + 1
@@ -145,28 +145,6 @@ class ContextChatMessageHistory(BaseChatMessageHistory):
                     f"总轮次数={total_count}, "
                     f"上下文轮次数={len(self._chat_rounds)}, 上下文消息数={len(self._messages)}, "
                     f"下一轮次={self._next_round_number}")
-
-    def get_context_messages(self, max_rounds: int = None) -> List[BaseMessage]:
-        """获取用于 AI 上下文的消息（只用 user_message + ai_message）"""
-        if not self._initialized:
-            return []
-
-        max_rounds = max_rounds or settings.MAX_MSG_HISTORY_LENGTH
-
-        if len(self._chat_rounds) > max_rounds:
-            recent_rounds = self._chat_rounds[-max_rounds:]
-        else:
-            recent_rounds = self._chat_rounds
-
-        return self._rebuild_messages_from_rounds(recent_rounds)
-
-    def clear(self) -> None:
-        """清空历史（只清空内存，不清除数据库）"""
-        self._messages = []
-        self._chat_rounds = []
-        self._next_round_number = 1
-        self._initialized = False
-        logger.info(f"会话 {self.session_id} 的消息历史已清空")
 
     def _rebuild_messages_from_rounds(self, rounds: List[Dict] = None) -> List[BaseMessage]:
         """从轮次数据重建消息列表（只用 user_message + ai_message）"""
@@ -210,3 +188,11 @@ class ContextChatMessageHistory(BaseChatMessageHistory):
         except Exception as e:
             logger.error(f"保存对话轮次时出错: {str(e)}", exc_info=True)
             return None
+
+    def clear(self) -> None:
+        """清空历史（只清空内存，不清除数据库）"""
+        self._messages = []
+        self._chat_rounds = []
+        self._next_round_number = 1
+        self._initialized = False
+        logger.info(f"会话 {self.session_id} 的消息历史已清空")

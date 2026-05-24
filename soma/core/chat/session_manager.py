@@ -340,7 +340,7 @@ class SessionManager:
     async def close(self):
         """关闭连接"""
         if self.memory_manager:
-            self.memory_manager.reset_history()
+            self.memory_manager.close()
 
         if self.file_manager:
             await self.file_manager.close()

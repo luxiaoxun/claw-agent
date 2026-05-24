@@ -79,7 +79,7 @@ class ChatMemoryManager:
         )
         return self._history.current_round_number  # 使用 property
 
-    def reset_history(self):
+    def close(self):
         self._history.clear()
 
     def get_context_by_tokens(
