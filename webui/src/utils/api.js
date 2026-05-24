@@ -80,3 +80,51 @@ export const channelApi = {
 }
 
 export { API_BASE_URL }
+
+// WebSocket URL builder
+export const WS_BASE_URL = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  // 开发模式下 VITE_API_BASE_URL 配置了完整后端地址 (http://127.0.0.1:5000/api)
+  // WebSocket 需要直连后端，不走 Vite 代理
+  if (API_BASE_URL.startsWith('http')) {
+    // 完整 URL 模式：提取 host 并拼接 ws 路径
+    const url = new URL(API_BASE_URL)
+    return `${protocol}//${url.host}/api/chat/ws/message`
+  }
+  // 生产模式或相对路径模式：使用当前主机
+  return `${protocol}//${host}/api/chat/ws/message`
+}
+
+// Session APIs
+export const sessionApi = {
+  list: (limit = 50, offset = 0) => api.get(`/session/?limit=${limit}&offset=${offset}`),
+
+  create: () => api.post('/session/create', {}),
+
+  rename: (sessionId, title) => api.put(`/session/${sessionId}`, { title }),
+
+  delete: (sessionId) => api.delete(`/session/${sessionId}`),
+
+  getMessages: (sessionId) => api.get(`/session/${sessionId}/messages`)
+}
+
+// Workspace APIs
+export const workspaceApi = {
+  tree: () => api.get('/workspace/tree'),
+
+  list: (path) => api.get(`/workspace/list?path=${encodeURIComponent(path)}`),
+
+  read: (path) => api.get(`/workspace/read?path=${encodeURIComponent(path)}`)
+}
+
+// Skill APIs
+export const skillApi = {
+  list: () => api.get('/skill/list'),
+
+  get: (name) => api.get(`/skill/${name}`),
+
+  preview: (formData) => api.post('/skill/preview', formData, true),
+
+  import: (formData) => api.post('/skill/import', formData, true)
+}

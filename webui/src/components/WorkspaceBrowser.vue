@@ -101,7 +101,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Folder, Document } from '@element-plus/icons-vue'
-import { api } from '../utils/api'
+import { api, workspaceApi } from '../utils/api'
 
 const loading = ref(false)
 const items = ref([])
@@ -149,7 +149,7 @@ const pathCrumbs = computed(() => {
 const fetchDirectory = async (path) => {
   loading.value = true
   try {
-    const data = await api.get(`/workspace/list?path=${encodeURIComponent(path)}`)
+    const data = await workspaceApi.list(path)
     if (data && data.items) {
       items.value = data.items.sort((a, b) => {
         if (a.is_directory !== b.is_directory) {
@@ -184,7 +184,7 @@ const handleItemDoubleClick = (item) => {
     fetchDirectory(item.path)
   } else {
     previewFile.value = { name: item.name, size: item.size }
-    api.get(`/workspace/read?path=${encodeURIComponent(item.path)}`).then(resp => {
+    workspaceApi.read(item.path).then(resp => {
       if (resp) {
         previewFile.value = { name: resp.name, size: resp.size }
         fileContent.value = resp.content || ''
@@ -240,7 +240,7 @@ const refreshCurrentPath = () => {
 }
 
 onMounted(() => {
-  api.get('/workspace/tree').then(data => {
+  workspaceApi.tree().then(data => {
     if (data && data.workspace_dir) {
       fetchDirectory(data.workspace_dir)
     }

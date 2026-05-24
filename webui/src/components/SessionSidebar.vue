@@ -87,7 +87,7 @@ import { Plus, Search, ChatDotRound, Delete, Loading, More, Edit } from '@elemen
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import 'dayjs/locale/zh-cn'
-import { api } from '../utils/api'
+import { api, sessionApi } from '../utils/api'
 
 dayjs.extend(relativeTime)
 dayjs.locale('zh-cn')
@@ -133,7 +133,7 @@ const fetchSessions = async (reset = false) => {
   }
 
   try {
-    const data = await api.get(`/session/?limit=${PAGE_SIZE}&offset=${currentOffset.value}`)
+    const data = await sessionApi.list(PAGE_SIZE, currentOffset.value)
 
     if (data) {
       if (reset) {
@@ -164,7 +164,7 @@ const handleSearch = () => {
 
 const createNewSession = async () => {
   try {
-    const data = await api.post('/session/create', {})
+    const data = await sessionApi.create()
     if (data && data.session_id) {
       currentSessionId.value = data.session_id
       emit('new-session', data.session_id)
@@ -202,9 +202,7 @@ const confirmRename = async () => {
     return
   }
 
-  const success = await api.put(`/session/${renameSessionId.value}`, {
-    title: newSessionTitle.value.trim()
-  })
+  const success = await sessionApi.rename(renameSessionId.value, newSessionTitle.value.trim())
 
   if (success) {
     ElMessage.success('重命名成功')
@@ -229,7 +227,7 @@ const handleDelete = async (sessionId) => {
       }
     )
 
-    const success = await api.delete(`/session/${sessionId}`)
+    const success = await sessionApi.delete(sessionId)
     if (success) {
       ElMessage.success('删除成功')
       sessions.value = sessions.value.filter(s => s.session_id !== sessionId)

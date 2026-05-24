@@ -77,6 +77,57 @@ npm run build    # Production build
 ### Frontend (`webui/`)
 Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`) and WebSocket (`/api/chat/ws/message`).
 
+#### Frontend API Architecture (`webui/src/utils/api.js`)
+
+All API calls are centralized in `api.js`:
+
+```javascript
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+```
+
+| API | Description |
+|-----|-------------|
+| `api` | Generic HTTP methods: `get`, `post`, `put`, `delete` |
+| `channelApi` | Channel CRUD operations |
+| `sessionApi` | Session list/create/rename/delete/getMessages |
+| `workspaceApi` | Workspace tree/list/read |
+| `skillApi` | Skill list/get/preview/import |
+| `WS_BASE_URL()` | Dynamic WebSocket URL builder |
+
+**Environment Configuration:**
+| Mode | `VITE_API_BASE_URL` | Example |
+|------|---------------------|---------|
+| Development | Full URL | `http://127.0.0.1:5000/api` |
+| Production (nginx) | Relative path | `/api` |
+
+**WebSocket URL Logic:**
+```javascript
+WS_BASE_URL = () => {
+  if (API_BASE_URL.startsWith('http')) {
+    // Dev mode: extract host from full URL
+    return `${protocol}//${url.host}/api/chat/ws/message`
+  }
+  // Prod mode: use current host
+  return `${protocol}//${host}/api/chat/ws/message`
+}
+```
+
+#### Session State Management (`ChatWindow.vue`)
+
+**Session Lifecycle:**
+
+1. **新建会话**: 点击「新建会话」→ `sessionApi.create()` → `emit('new-session', session_id)` → ChatWindow props 更新 → `loadSessionHistory` → `connect()` WebSocket
+2. **点击历史会话**: 点击会话项 → `emit('select-session', session_id)` → ChatWindow props 更新 → `loadSessionHistory` → `connect()` WebSocket
+3. **发送消息**: 检查 WebSocket 状态，未连接时自动建立连接后再发送
+4. **连接状态**: Status tag 显示 `connected`（已连接）、`connecting`（连接中）、`disconnected`（已断开）
+
+**Status Transitions:**
+```
+idle → connecting → connected → disconnected
+                      ↓
+                  processing (发送消息时)
+```
+
 ### Tool System (`app/core/tool/`)
 - **Base tools**: `file_read`, `file_write`, `file_edit`, `file_search`, `command_execute`, `doc_parser`, `web_fetch`, `web_search`, `search_data`
 - **MCP tools**: Loaded from `MCP_SERVER_URL` (optional)

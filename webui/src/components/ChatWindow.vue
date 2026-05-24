@@ -76,6 +76,7 @@ import {ref, computed, onMounted, onUnmounted, nextTick, watch} from 'vue'
 import { ElIcon, ElTag } from 'element-plus'
 import { Upload, Loading } from '@element-plus/icons-vue'
 import { marked } from 'marked'
+import { API_BASE_URL, WS_BASE_URL, sessionApi } from '../utils/api'
 
 // 配置 marked 选项
 marked.setOptions({
@@ -102,8 +103,6 @@ const reconnectAttempts = ref(0)
 const currentResponseIndex = ref(-1)
 const currentResponseContent = ref('')
 const loadingHistory = ref(false)
-
-const API_BASE_URL = 'http://127.0.0.1:5000/api'
 
 const currentSessionId = computed(() => sessionId.value)
 
@@ -403,17 +402,12 @@ const loadSessionHistory = async (sid) => {
   addMessage('系统', `加载会话历史: ${sid.substring(0, 8)}...`, 'system')
 
   try {
-    const url = `${API_BASE_URL}/session/${sid}/messages`
-    console.log('loadSessionHistory: 请求URL', url)
-    const res = await fetch(url)
-    console.log('loadSessionHistory: 响应状态', res.status)
-    const data = await res.json()
+    const data = await sessionApi.getMessages(sid)
     console.log('loadSessionHistory: 响应数据', data)
 
-    if (data.code === 200 || data.code === "200") {
-      const rounds = data.data?.rounds || []
+    if (data && data.rounds !== undefined) {
+      const rounds = data.rounds || []
       console.log('loadSessionHistory: 获取到轮次数量', rounds.length)
-      console.log('loadSessionHistory: rounds data:', JSON.stringify(rounds).substring(0, 200))
 
       if (rounds.length === 0) {
         addMessage('系统', '暂无历史消息', 'system')
@@ -428,14 +422,16 @@ const loadSessionHistory = async (sid) => {
         // 加载完成后滚动到底部
         scrollToBottomDelayed()
       }
-      // 加载成功后自动建立 WebSocket 连接
-      connect()
     } else {
-      addMessage('系统', `加载历史失败: ${data.message}`, 'system')
+      addMessage('系统', '暂无历史消息', 'system')
     }
+    // 加载成功后自动建立 WebSocket 连接
+    connect()
   } catch (e) {
     console.error('加载历史消息失败:', e)
-    addMessage('系统', `加载历史失败: ${e.message}`, 'system')
+    addMessage('系统', `加载历史失败: ${e.message || e}`, 'system')
+    // 也尝试建立连接（新会话没有历史也能聊）
+    connect()
   } finally {
     loadingHistory.value = false
   }
@@ -449,7 +445,7 @@ const connect = () => {
   }
 
   status.value = 'connecting'
-  const wsUrl = 'ws://127.0.0.1:5000/api/chat/ws/message'
+  const wsUrl = WS_BASE_URL()
   console.log('尝试连接 WebSocket:', wsUrl)
 
   try {

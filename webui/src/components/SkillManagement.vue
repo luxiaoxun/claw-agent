@@ -65,7 +65,7 @@
 import { ref, onMounted } from 'vue'
 import { ElIcon, ElCard, ElDialog, ElButton, ElTag, ElDivider, ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Upload } from '@element-plus/icons-vue'
-import { api } from '../utils/api'
+import { api, skillApi } from '../utils/api'
 
 const skills = ref([])
 const loading = ref(true)
@@ -78,7 +78,7 @@ const fetchSkills = async () => {
   loading.value = true
   error.value = ''
   try {
-    const data = await api.get('/skill/list')
+    const data = await skillApi.list()
     if (data && data.skills) {
       skills.value = data.skills
     }
@@ -95,7 +95,7 @@ const showSkillDetail = async (skill) => {
   dialogVisible.value = true
 
   try {
-    const data = await api.get(`/skill/${skill.name}`)
+    const data = await skillApi.get(skill.name)
     if (data) {
       currentSkill.value = data
     }
@@ -118,7 +118,7 @@ const handleFileChange = async (event) => {
     const previewFormData = new FormData()
     previewFormData.append('file', file)
 
-    const previewResult = await api.post('/skill/preview', previewFormData, true)
+    const previewResult = await skillApi.preview(previewFormData)
 
     if (previewResult && previewResult.exists) {
       // Ask user if they want to overwrite
@@ -142,7 +142,7 @@ const handleFileChange = async (event) => {
     const formData = new FormData()
     formData.append('file', file)
 
-    const result = await api.post('/skill/import', formData, true)
+    const result = await skillApi.import(formData)
     if (result && result.exists) {
       ElMessage.success(`Skill "${result.name}" 覆盖成功`)
     } else {
