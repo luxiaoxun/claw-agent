@@ -96,7 +96,7 @@ class SessionManager:
             增强后的消息列表
         """
 
-        # 将最近的 MSG_MAX_HISTORY_LENGTH 次对话轮次转换为消息列表
+        # 将最近的 MAX_MSG_HISTORY_LENGTH 次对话轮次转换为消息列表
         context_history = self.memory_manager.get_context_history()
 
         # 获取文件上下文消息
@@ -107,6 +107,7 @@ class SessionManager:
             logger.info(f"已添加文件上下文到对话中，当前文件数: {await self.file_manager.count()}")
             return enhanced_context
 
+        logger.info(f"获取{len(context_history)}条上下文历史消息")
         return context_history
 
     # 文件管理相关的便捷方法（委托给 file_manager）

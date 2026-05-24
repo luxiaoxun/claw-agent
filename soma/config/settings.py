@@ -64,7 +64,7 @@ class Settings(BaseSettings):
 
     # 上下文策略配置
     CONTEXT_STRATEGY: str = "round"  # round | token | message_count | semantic | hybrid
-    MSG_MAX_HISTORY_LENGTH: int = 10  # round 策略的最大轮次
+    MAX_MSG_HISTORY_LENGTH: int = 10  # round 策略的最大轮次
     MAX_CONTEXT_TOKENS: int = 8000  # token 策略的最大 token
     MAX_CONTEXT_MESSAGES: int = 20  # message_count 策略的最大消息数
     MIN_CONTEXT_ROUNDS: int = 5  # hybrid 策略的最小轮次

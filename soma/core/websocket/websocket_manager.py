@@ -39,7 +39,7 @@ class WebSocketConnectionManager:
             "initialized": False
         }
 
-        logger.info(f"WebSocket 客户端 {client_id} 已连接")
+        logger.debug(f"WebSocket 客户端 {client_id} 已连接")
         return client_id
 
     async def get_or_create_session_manager(self, client_id: str, session_id: str = None,

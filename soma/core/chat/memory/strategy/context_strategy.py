@@ -5,7 +5,7 @@ from langchain_core.messages.utils import trim_messages, count_tokens_approximat
 from soma.config.settings import settings
 from soma.config.logging_config import get_logger
 from abc import ABC, abstractmethod
-from soma.core.chat.memory.strategy.database_chat_message_history import DatabaseChatMessageHistory
+from soma.core.chat.memory.strategy.context_message_history import ContextChatMessageHistory
 
 logger = get_logger(__name__)
 
@@ -17,7 +17,7 @@ class ContextStrategy(ABC):
     """
 
     @abstractmethod
-    def get_context(self, history: 'DatabaseChatMessageHistory') -> List[BaseMessage]:
+    def get_context(self, history: 'ContextChatMessageHistory') -> List[BaseMessage]:
         pass
 
     @abstractmethod
@@ -32,9 +32,9 @@ class RoundBasedContextStrategy(ContextStrategy):
     """
 
     def __init__(self, max_rounds: int = None):
-        self.max_rounds = max_rounds or settings.MSG_MAX_HISTORY_LENGTH
+        self.max_rounds = max_rounds or settings.MAX_MSG_HISTORY_LENGTH
 
-    def get_context(self, history: 'DatabaseChatMessageHistory') -> List[BaseMessage]:
+    def get_context(self, history: 'ContextChatMessageHistory') -> List[BaseMessage]:
         if not history.initialized:
             return []
 
@@ -152,7 +152,7 @@ class TokenBasedContextStrategy(ContextStrategy):
                 return encoding
         return 'cl100k_base'
 
-    def get_context(self, history: 'DatabaseChatMessageHistory') -> List[BaseMessage]:
+    def get_context(self, history: 'ContextChatMessageHistory') -> List[BaseMessage]:
         all_messages = history.messages
         if not all_messages:
             return []
@@ -190,7 +190,7 @@ class MessageCountBasedContextStrategy(ContextStrategy):
     def __init__(self, max_messages: int = 20):
         self.max_messages = max_messages
 
-    def get_context(self, history: 'DatabaseChatMessageHistory') -> List[BaseMessage]:
+    def get_context(self, history: 'ContextChatMessageHistory') -> List[BaseMessage]:
         all_messages = history.messages
         if not all_messages:
             return []
@@ -221,7 +221,7 @@ class SemanticMemoryContextStrategy(ContextStrategy):
         self.max_tokens = max_tokens
         self.importance_threshold = importance_threshold
 
-    def get_context(self, history: 'DatabaseChatMessageHistory') -> List[BaseMessage]:
+    def get_context(self, history: 'ContextChatMessageHistory') -> List[BaseMessage]:
         """
         简化实现：优先保留包含工具调用的消息，
         普通对话消息可以被压缩或省略
@@ -288,7 +288,7 @@ class HybridContextStrategy(ContextStrategy):
             token_counter=token_counter_mode
         )
 
-    def get_context(self, history: 'DatabaseChatMessageHistory') -> List[BaseMessage]:
+    def get_context(self, history: 'ContextChatMessageHistory') -> List[BaseMessage]:
         if not history.initialized:
             return []
 

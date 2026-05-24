@@ -213,9 +213,6 @@ async def get_session_messages(
     每条记录代表一次完整的问答轮次
     """
     try:
-        logger.info(
-            f"获取会话轮次: session_id={session_id}")
-
         # 检查会话是否存在
         session = database_service.session_service.get_session(session_id)
         if not session:
@@ -237,6 +234,8 @@ async def get_session_messages(
             "returned": len(rounds),
             "rounds": rounds
         }
+
+        logger.info(f"获取会话: {session_id}, 轮次: {total_rounds}")
 
         return success_response(
             data=rounds_data,

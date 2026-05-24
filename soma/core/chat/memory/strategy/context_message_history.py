@@ -1,3 +1,4 @@
+# core/chat/memory/strategy/context_message_history.py
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.chat_history import BaseChatMessageHistory
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class DatabaseChatMessageHistory(BaseChatMessageHistory):
+class ContextChatMessageHistory(BaseChatMessageHistory):
     """
     符合 LangChain 标准的数据库消息历史
     """
@@ -95,7 +96,7 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
             })
 
             # 限制内存中的轮次数
-            max_rounds = settings.MSG_MAX_HISTORY_LENGTH
+            max_rounds = settings.MAX_MSG_HISTORY_LENGTH
             if len(self._chat_rounds) > max_rounds:
                 self._chat_rounds = self._chat_rounds[-max_rounds:]
                 self._rebuild_messages_from_rounds()
@@ -115,16 +116,23 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
         if not self.message_service:
             raise RuntimeError("消息服务未初始化")
 
-        max_rounds = max_rounds or settings.MSG_MAX_HISTORY_LENGTH
+        max_rounds = max_rounds or settings.MAX_MSG_HISTORY_LENGTH
 
-        rounds_desc = self.message_service.load_messages(
-            self.session_id,
-            limit=max_rounds,
-            offset=0,
-            order_desc=True
-        )
-
-        self._chat_rounds = list(reversed(rounds_desc))
+        total_count = self.message_service.get_message_rounds_count(self.session_id)
+        if total_count == 0:
+            self._chat_rounds = []
+        elif total_count <= max_rounds:
+            self._chat_rounds = self.message_service.load_messages(
+                self.session_id,
+                order_desc=False
+            )
+        else:
+            self._chat_rounds = self.message_service.load_messages(
+                self.session_id,
+                limit=max_rounds,
+                offset=total_count - max_rounds,
+                order_desc=False
+            )
         self._rebuild_messages_from_rounds()
 
         if self._chat_rounds:
@@ -134,7 +142,8 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
 
         self._initialized = True
         logger.info(f"加载会话历史完成: session_id={self.session_id}, "
-                    f"轮次数={len(self._chat_rounds)}, 消息数={len(self._messages)}, "
+                    f"总轮次数={total_count}, "
+                    f"上下文轮次数={len(self._chat_rounds)}, 上下文消息数={len(self._messages)}, "
                     f"下一轮次={self._next_round_number}")
 
     def get_context_messages(self, max_rounds: int = None) -> List[BaseMessage]:
@@ -142,7 +151,7 @@ class DatabaseChatMessageHistory(BaseChatMessageHistory):
         if not self._initialized:
             return []
 
-        max_rounds = max_rounds or settings.MSG_MAX_HISTORY_LENGTH
+        max_rounds = max_rounds or settings.MAX_MSG_HISTORY_LENGTH
 
         if len(self._chat_rounds) > max_rounds:
             recent_rounds = self._chat_rounds[-max_rounds:]

@@ -2,7 +2,7 @@
 from typing import List, Optional, Dict, Any, Callable
 from langchain_core.messages import BaseMessage
 from soma.config.logging_config import get_logger
-from soma.core.chat.memory.strategy.database_chat_message_history import DatabaseChatMessageHistory
+from soma.core.chat.memory.strategy.context_message_history import ContextChatMessageHistory
 from soma.core.chat.memory.strategy.context_strategy import (
     ContextStrategy, RoundBasedContextStrategy, TokenBasedContextStrategy, MessageCountBasedContextStrategy)
 from soma.core.chat.memory.strategy.context_strategy_factory import ContextStrategyFactory
@@ -19,7 +19,7 @@ class ChatMemoryManager:
     ):
         self.session_id = session_id
         self.user_id = user_id
-        self._history = DatabaseChatMessageHistory(session_id, user_id)
+        self._history = ContextChatMessageHistory(session_id, user_id)
         self._context_strategy = context_strategy or ContextStrategyFactory.create_from_settings()
 
     @property
