@@ -1,6 +1,8 @@
 # Soma
 
-Security Operations Management Agent
+## Security Operations Management Agent
+
+Soma is a Python-based AI agent with a Vue 3 web UI. It provides chat-based interaction with LLM-powered agents that can use tools and skills to accomplish tasks.
 
 ## 功能特性
 - 聊天Chat：支持流式会话、文件传输
@@ -8,6 +10,7 @@ Security Operations Management Agent
 - Contxt：上下文memory压缩
 - Skill管理：动态加载Skill
 - 消息通道：对接飞书、企业微信机器人
+- WebUI：浏览器Web界面
 
 ### 内置工具
 - 文件读写、编辑、查找
