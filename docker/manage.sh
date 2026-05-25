@@ -64,15 +64,33 @@ setup_env() {
 }
 
 create_dirs() {
-    mkdir -p "$PROJECT_ROOT/workspace/skills"
     mkdir -p "$PROJECT_ROOT/workspace/uploads"
     mkdir -p "$PROJECT_ROOT/workspace/outputs"
     mkdir -p "$PROJECT_ROOT/logs"
 }
 
+# Sync workspace content to docker volume directory
+sync_workspace() {
+    local docker_workspace_dir="/home/work/soma/docker/workspace"
+    local docker_logs_dir="/home/work/soma/docker/logs"
+
+    # Create docker workspace directory if not exists
+    mkdir -p "$docker_workspace_dir"
+
+    # Copy all workspace content to docker workspace directory
+    if [ -d "$PROJECT_ROOT/workspace" ] && [ "$(ls -A $PROJECT_ROOT/workspace 2>/dev/null)" ]; then
+        log_info "同步 workspace 内容到 $docker_workspace_dir ..."
+        cp -r "$PROJECT_ROOT/workspace/"* "$docker_workspace_dir/"
+    fi
+
+    # Create logs directory
+    mkdir -p "$docker_logs_dir"
+}
+
 # Start services
 start() {
     log_info "启动 Soma 服务..."
+    sync_workspace
     cd "$SCRIPT_DIR"
     $DOCKER_COMPOSE --env-file "$PROJECT_ROOT/.env" up -d
     log_info "服务已启动"
