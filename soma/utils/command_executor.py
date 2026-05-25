@@ -12,12 +12,28 @@ Features:
 
 import subprocess
 from typing import Optional
-
-from deepagents.backends.protocol import ExecuteResponse
+from dataclasses import dataclass
 
 # Command execution defaults
 DEFAULT_COMMAND_TIMEOUT = 30  # seconds
 DEFAULT_MAX_OUTPUT_SIZE = 100000  # characters
+
+
+@dataclass
+class ExecuteResponse:
+    """Result of code execution.
+
+    Simplified schema optimized for LLM consumption.
+    """
+
+    output: str
+    """Combined stdout and stderr output of the executed command."""
+
+    exit_code: int | None = None
+    """The process exit code. 0 indicates success, non-zero indicates failure."""
+
+    truncated: bool = False
+    """Whether the output was truncated due to backend limitations."""
 
 
 def execute_local_command(

@@ -13,11 +13,24 @@ Soma is a Python-based AI agent with a Vue 3 web UI. It provides chat-based inte
 - WebUI：浏览器Web界面
 
 ### 内置工具
-- 文件读写、编辑、查找
-- DOC/PDF文档转换
-- 命令执行
-- 网页获取
-- 网页搜索
+
+| 工具 | 用途 | 示例 |
+|------|------|------|
+| **skill_load** | 加载技能 | `{"skill_name": "alert_analysis"}` |
+| **file_read** | 读取文件（文本/图片/PDF） | `{"path": "/workspace/file.txt"}` |
+| **file_write** | 写入文件 | `{"path": "output.txt", "content": "..."}` |
+| **file_edit** | 编辑文件（字符串替换） | `{"filePath": "x.py", "oldString": "a", "newString": "b"}` |
+| **glob** | 文件名模式搜索 | `{"pattern": "**/*.py"}` |
+| **grep** | 内容正则搜索 | `{"pattern": "TODO", "include": "*.py"}` |
+| **bash** | 执行命令/代码 | `{"command": "python script.py"}` |
+| **web_fetch** | 获取URL内容 | `{"url": "https://example.com"}` |
+| **web_search** | 网页搜索 | `{"query": "AI news", "max_results": 10}` |
+| **doc_parser** | PDF/DOCX → Markdown | `{"input_path": "doc.pdf", "output_path": "out.md"}` |
+| **csv_read** | 读取CSV文件 | `{"path": "data.csv"}` |
+| **csv_write** | 写入CSV文件 | `{"path": "out.csv", "data": [...]}` |
+| **csv_filter** | 筛选CSV行 | `{"path": "data.csv", "filter_expr": "age > 18"}` |
+| **api_request** | HTTP API调用 | `{"url": "https://api.com", "method": "GET"}` |
+| **data_search** | Elasticsearch查询 | `{"indexName": "event", "query": "severity>=3"}` |
 
 ### 内置Skill（样例）
 - 告警解读：AI解读分析告警日志

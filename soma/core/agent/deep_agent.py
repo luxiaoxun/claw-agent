@@ -4,9 +4,9 @@ from langchain.agents import create_agent
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain.chat_models import init_chat_model, BaseChatModel
 from soma.core.tool.mcp.mcp_client import MCPClientManager
-from soma.core.tool import skill_load, file_read, file_write, file_edit, file_search, command_execute, doc_parser, \
-    data_search, web_fetch, web_search
-from soma.core.agent.agent_prompt import AgentPrompt
+from soma.core.tool import skill_load, file_read, file_write, file_edit, bash, doc_parser, \
+    data_search, web_fetch, web_search, api_request, csv_read, csv_write, csv_filter, glob, grep
+from soma.core.agent.prompt_manager import PromptManager
 from soma.utils.message_handler import MessageHandler
 from soma.utils.token_usage import extract_token_usage_from_output
 from soma.config.settings import settings
@@ -22,8 +22,8 @@ class DeepAgent:
 
     def __init__(self):
         # 基础工具
-        self.base_tools = [skill_load, file_read, file_write, file_edit, file_search, command_execute, doc_parser,
-                           web_fetch, web_search, data_search]
+        self.base_tools = [skill_load, file_read, file_write, file_edit, bash, glob, grep, doc_parser,
+                           web_fetch, web_search, data_search, api_request, csv_read, csv_write, csv_filter]
 
         # MCP相关
         self.mcp_manager: Optional[MCPClientManager] = None
@@ -36,7 +36,7 @@ class DeepAgent:
         self.system_prompt: Optional[str] = None
 
         # 提示词管理器
-        self.prompt_manager = AgentPrompt()
+        self.prompt_manager = PromptManager()
 
     async def initialize(self):
         """初始化Agent"""
@@ -46,10 +46,12 @@ class DeepAgent:
             if self.use_mcp:
                 await self._load_mcp_tools()
 
-            self._build_base_system_prompt()
-
             # 创建Agent
             all_tools = self.base_tools + self.mcp_tools
+
+            # 设置工具列表到提示词管理器（动态生成工具列表）
+            self.prompt_manager.set_tools(all_tools)
+            self._build_base_system_prompt()
             self._create_agent(all_tools)
 
             logger.info(f"Agent初始化完成，工具数: {len(all_tools)}")
@@ -105,10 +107,10 @@ class DeepAgent:
     def _rebuild_agent(self):
         """重建Agent（当skill列表变化时调用）"""
         logger.info("正在重建Agent...")
-        # 获取最新的prompt
-        self.system_prompt = self.prompt_manager.get_dynamic_prompt()
-        # 重新创建agent
+        # 获取最新的工具列表和prompt
         all_tools = self.base_tools + self.mcp_tools
+        self.prompt_manager.set_tools(all_tools)
+        self.system_prompt = self.prompt_manager.get_dynamic_prompt()
         self._create_agent(all_tools)
         logger.info("Agent重建完成")
 

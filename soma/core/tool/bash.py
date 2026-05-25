@@ -28,8 +28,8 @@ class CommandExecuteInput(BaseModel):
     )
 
 
-@tool("command_execute", args_schema=CommandExecuteInput)
-def command_execute(
+@tool("bash", args_schema=CommandExecuteInput)
+def bash(
         command: str,
         working_dir: Optional[str] = None,
         timeout: int = 30,
