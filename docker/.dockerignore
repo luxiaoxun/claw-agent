@@ -29,6 +29,7 @@ logs/
 .env
 .env.local
 .env.*.local
+.env.docker
 
 # Git
 .git/

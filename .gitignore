@@ -15,6 +15,7 @@ target/
 # Virtual environments
 .venv
 .env
+/docker/.env.docker
 
 *.db
 uploads/
