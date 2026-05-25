@@ -110,101 +110,20 @@ class SessionManager:
         logger.info(f"获取{len(context_history)}条上下文历史消息")
         return context_history
 
-    # 文件管理相关的便捷方法（委托给 file_manager）
-    async def add_file_context(self, file_info: Dict[str, Any]) -> bool:
-        """
-        添加文件到会话上下文
-
-        Args:
-            file_info: 文件信息字典
-
-        Returns:
-            bool: 是否添加成功
-        """
-        if not self._initialized:
-            logger.warning(f"SessionManager 未初始化，无法添加文件")
-            return False
-
-        return await self.file_manager.add_file(file_info)
-
-    async def get_file_contexts(self) -> List[Dict[str, Any]]:
-        """
-        获取当前会话的所有文件上下文
-
-        Returns:
-            文件信息列表
-        """
-        if not self._initialized:
-            return []
-
-        return await self.file_manager.get_all_files()
-
-    async def get_file_by_name(self, filename: str) -> Optional[Dict[str, Any]]:
-        """
-        根据文件名获取文件信息
-
-        Args:
-            filename: 文件名或保存的文件名
-
-        Returns:
-            文件信息字典，如果未找到返回 None
-        """
-        if not self._initialized:
-            return None
-
-        # 先按保存名查找
-        file_info = await self.file_manager.get_file(filename, by="saved_name")
-        if file_info:
-            return file_info
-
-        # 再按原始文件名查找
-        return await self.file_manager.get_file(filename, by="original_name")
-
-    async def remove_file_context(self, file_id: str, by: str = "saved_name") -> bool:
-        """
-        从上下文中移除文件
-
-        Args:
-            file_id: 文件标识
-            by: 标识类型
-
-        Returns:
-            bool: 是否移除成功
-        """
-        if not self._initialized:
-            return False
-
-        return await self.file_manager.remove_file(file_id, by)
-
-    async def clear_file_contexts(self) -> int:
-        """
-        清空所有文件上下文
-
-        Returns:
-            清空的文件数量
-        """
-        if not self._initialized:
-            return 0
-
-        return await self.file_manager.clear()
-
-    async def get_files_summary(self) -> str:
-        """
-        获取文件摘要信息
-
-        Returns:
-            文件摘要文本
-        """
-        if not self._initialized:
-            return "会话未初始化"
-
-        return await self.file_manager.get_files_summary()
-
     async def _save_current_round(self, user_message: str, ai_message: str, messages: List[BaseMessage]):
         """
         保存当前对话轮次到数据库
         """
         await self.memory_manager.save_current_round(user_message, ai_message, messages)
+
+        # 如果是第一轮会话，按用户消息的前12个字符更新会话标题
+        if self.memory_manager.current_round_number == 1:
+            # 提取前12个字符
+            if len(user_message) > 12:
+                title = user_message[:12] + "..."
+            else:
+                title = user_message
+            self.session_service.update_session_title(self.session_id, title)
 
     async def process_message(self, message: str) -> str:
         """处理用户消息（非流式）"""
