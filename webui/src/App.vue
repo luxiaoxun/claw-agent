@@ -56,7 +56,29 @@
 
     <!-- 工作空间内容 -->
     <template v-else-if="currentMenu === 'workspace'">
-      <WorkspaceBrowser />
+      <div class="workspace-container">
+        <div class="workspace-tabs">
+          <div
+            :class="['ws-tab', { active: wsTab === 'files' }]"
+            @click="wsTab = 'files'"
+          >
+            <el-icon><Document /></el-icon>
+            <span>文件</span>
+          </div>
+          <div
+            :class="['ws-tab', { active: wsTab === 'knowledge' }]"
+            @click="switchToKnowledge"
+          >
+            <el-icon><Notebook /></el-icon>
+            <span>知识库</span>
+          </div>
+        </div>
+        <div class="workspace-content">
+          <WorkspaceBrowser v-if="wsTab === 'files'" />
+          <SkillManagement v-else-if="wsTab === 'skills'" />
+          <KnowledgeBase ref="knowledgeBaseRef" v-else-if="wsTab === 'knowledge'" />
+        </div>
+      </div>
     </template>
 
     <!-- Skill管理内容 -->
@@ -76,19 +98,30 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { ElIcon } from 'element-plus'
-import { ChatDotRound, Tools, FolderOpened, Bell } from '@element-plus/icons-vue'
+import { ChatDotRound, Tools, FolderOpened, Bell, Document, Collection, Notebook } from '@element-plus/icons-vue'
 import SessionSidebar from './components/SessionSidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
 import SkillManagement from './components/SkillManagement.vue'
 import WorkspaceBrowser from './components/WorkspaceBrowser.vue'
 import ChannelManagement from './components/ChannelManagement.vue'
+import KnowledgeBase from './components/KnowledgeBase.vue'
 
 const sidebarRef = ref(null)
 const chatRef = ref(null)
+const knowledgeBaseRef = ref(null)
 const currentSessionId = ref(null)
 const currentMenu = ref(sessionStorage.getItem('currentMenu') || 'session')
+const wsTab = ref('files')
+
+const switchToKnowledge = async () => {
+  console.log('[App] switchToKnowledge called')
+  wsTab.value = 'knowledge'
+  await nextTick()
+  console.log('[App] knowledgeBaseRef.value:', knowledgeBaseRef.value)
+  knowledgeBaseRef.value?.init()
+}
 
 const switchMenu = (menu) => {
   if (menu === currentMenu.value) return
@@ -224,5 +257,52 @@ html, body {
 
 .main-content.full-width {
   width: 100%;
+}
+
+/* Workspace Tabs */
+.workspace-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-tabs {
+  display: flex;
+  background: #f5f7fa;
+  border-bottom: 1px solid #e4e7ed;
+  padding: 0 16px;
+}
+
+.ws-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  cursor: pointer;
+  color: #606266;
+  border-bottom: 2px solid transparent;
+  transition: all 0.3s;
+}
+
+.ws-tab:hover {
+  color: #409eff;
+}
+
+.ws-tab.active {
+  color: #409eff;
+  border-bottom-color: #409eff;
+  font-weight: 500;
+}
+
+.ws-tab .el-icon {
+  font-size: 16px;
+}
+
+.workspace-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

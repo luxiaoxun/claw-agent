@@ -256,6 +256,46 @@ class SessionManager:
                 "content": f"处理消息时出错: {str(e)}"
             }
 
+    # 文件管理相关的便捷方法（委托给 file_manager）
+    async def add_file_context(self, file_info: Dict[str, Any]) -> bool:
+        if not self._initialized:
+            logger.warning(f"SessionManager 未初始化，无法添加文件")
+            return False
+        return await self.file_manager.add_file(file_info)
+
+    async def get_file_contexts(self) -> List[Dict[str, Any]]:
+        if not self._initialized:
+            return []
+        return await self.file_manager.get_all_files()
+
+    async def get_file_by_name(self, filename: str) -> Optional[Dict[str, Any]]:
+        if not self._initialized:
+            return None
+
+        # 先按保存名查找
+        file_info = await self.file_manager.get_file(filename, by="saved_name")
+        if file_info:
+            return file_info
+
+        # 再按原始文件名查找
+        return await self.file_manager.get_file(filename, by="original_name")
+
+    async def remove_file_context(self, file_id: str, by: str = "saved_name") -> bool:
+        if not self._initialized:
+            return False
+        return await self.file_manager.remove_file(file_id, by)
+
+    async def clear_file_contexts(self) -> int:
+        if not self._initialized:
+            return 0
+        return await self.file_manager.clear()
+
+    async def get_files_summary(self) -> str:
+        if not self._initialized:
+            return "会话未初始化"
+
+        return await self.file_manager.get_files_summary()
+
     async def close(self):
         """关闭连接"""
         if self.memory_manager:

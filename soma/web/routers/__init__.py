@@ -7,6 +7,7 @@ from soma.web.routers.session_router import router as session_router
 from soma.web.routers.skill_router import router as skill_router
 from soma.web.routers.workspace_router import router as workspace_router
 from soma.web.routers.channel_router import router as channel_router
+from soma.web.routers.rag_router import router as rag_router
 
 # 创建API主路由器
 api_router = APIRouter()
@@ -20,6 +21,7 @@ api_router.include_router(session_router)
 api_router.include_router(skill_router)
 api_router.include_router(workspace_router)
 api_router.include_router(channel_router)
+api_router.include_router(rag_router)
 
 # 导出统一的路由器
 __all__ = ['api_router']

@@ -20,6 +20,9 @@ target/
 *.db
 uploads/
 outputs/
+workspace/.soma/chroma/
+workspace/.soma/models/
+
 event.json
 
 node_modules/

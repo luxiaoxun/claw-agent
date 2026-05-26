@@ -6,6 +6,7 @@ from langchain.chat_models import init_chat_model, BaseChatModel
 from soma.core.tool.mcp.mcp_client import MCPClientManager
 from soma.core.tool import skill_load, file_read, file_write, file_edit, bash, doc_parser, \
     data_search, web_fetch, web_search, api_request, csv_read, csv_write, csv_filter, glob, grep
+from soma.core.rag.rag_tool import rag_search, rag_ingest
 from soma.core.agent.prompt_manager import PromptManager
 from soma.utils.message_handler import MessageHandler
 from soma.utils.token_usage import extract_token_usage_from_output
@@ -23,7 +24,8 @@ class DeepAgent:
     def __init__(self):
         # 基础工具
         self.base_tools = [skill_load, file_read, file_write, file_edit, bash, glob, grep, doc_parser,
-                           web_fetch, web_search, data_search, api_request, csv_read, csv_write, csv_filter]
+                           web_fetch, web_search, data_search, api_request, csv_read, csv_write, csv_filter,
+                           rag_search, rag_ingest]
 
         # MCP相关
         self.mcp_manager: Optional[MCPClientManager] = None

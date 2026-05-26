@@ -5,8 +5,6 @@ Parses PDF, DOCX, or DOC files into Markdown and writes the result to an .md fil
 """
 
 from __future__ import annotations
-
-import asyncio
 import datetime as dt
 import importlib
 import re
@@ -15,16 +13,15 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 from typing import Callable, Optional
-
 from defusedxml import ElementTree as DefusedET
 from langchain.tools import tool
 from pydantic import BaseModel, Field
-
+from soma.config.settings import WORKSPACE_DIR
 from soma.config.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-SUPPORTED_SUFFIXES = {".pdf", ".docx", ".doc"}
+SUPPORTED_SUFFIXES = {".pdf", ".docx", ".doc", ".txt"}
 WORD_NAMESPACE = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 DOCX_SOFT_BREAK_TOKEN = "<<SOMA_AGENT_DOCX_SOFT_BREAK>>"
 
@@ -359,6 +356,12 @@ def _looks_like_readable_text(text: str) -> bool:
     return readable_chars / len(compact) >= 0.6
 
 
+def _extract_txt(file_path: Path) -> str:
+    """Extract text from plain text file"""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+
 def _extract_with_pandoc(file_path: Path) -> str:
     command = ["pandoc", str(file_path), "-t", "markdown", "--wrap=none"]
     result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
@@ -381,6 +384,10 @@ def _run_extractors(file_path: Path) -> tuple[str, str, list[str]]:
             ("markitdown", _extract_with_markitdown),
             ("docx-xml", _extract_docx_with_zipxml),
             ("pandoc", _extract_with_pandoc),
+        ]
+    elif suffix == ".txt":
+        extractors = [
+            ("txt", _extract_txt),
         ]
     else:
         extractors = [
@@ -432,7 +439,7 @@ def doc_parser(
         Formatted string with conversion result and metadata
     """
     # Get workspace directory from environment or use current directory
-    workspace_dir = Path.cwd()
+    workspace_dir = Path(WORKSPACE_DIR)
 
     # Resolve input path
     input_file = _resolve_input_path(input_path, workspace_dir)
@@ -450,15 +457,13 @@ def doc_parser(
 
     logger.info(f"Parsing document: {input_file}")
 
-    # Run extractors
+    # Run extractors - run in thread pool to avoid blocking the event loop
     try:
-        # Run in thread pool for CPU-intensive operations
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        markdown, parser_name, errors = loop.run_until_complete(
-            asyncio.to_thread(_run_extractors, input_file)
-        )
-        loop.close()
+        # Use concurrent.futures for thread pool since this is CPU-intensive
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_run_extractors, input_file)
+            markdown, parser_name, errors = future.result(timeout=120)
     except Exception as e:
         return f"Error: Failed to parse document - {str(e)}"
 

@@ -128,3 +128,37 @@ export const skillApi = {
 
   import: (formData) => api.post('/skill/import', formData, true)
 }
+
+// RAG APIs
+export const ragApi = {
+  listCollections: () => api.get('/rag/collection/list'),
+
+  createCollection: (data) => api.post('/rag/collection/create', data),
+
+  updateCollection: (id, data) => api.post(`/rag/collection/${id}/update`, data),
+
+  deleteCollection: (id) => api.post(`/rag/collection/${id}/delete`),
+
+  listDocuments: (collectionId) => api.get(`/rag/collection/${collectionId}/documents`),
+
+  uploadDocument: (collectionId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const headers = {}
+    return fetch(`${API_BASE_URL}/rag/collection/${collectionId}/document/upload`, {
+      method: 'POST',
+      headers,
+      body: formData
+    }).then(res => res.json()).then(data => {
+      if (data.code !== "200") {
+        ElMessage.error(data.message || '上传失败')
+        return null
+      }
+      return data.data
+    })
+  },
+
+  deleteDocument: (collectionId, docId) => api.post(`/rag/collection/${collectionId}/document/${docId}/delete`),
+
+  search: (data) => api.post('/rag/search', data)
+}

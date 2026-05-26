@@ -24,6 +24,14 @@ async def lifespan(app: FastAPI):
         database_service.initialize()
         logger.info("数据库服务容器初始化成功")
 
+        # 初始化 RAG 服务
+        from soma.service.rag_service import rag_service
+        from soma.config.settings import SOMA_DIR
+        import os
+        db_path = os.path.join(SOMA_DIR, "soma.db")
+        rag_service.initialize(db_path)
+        logger.info("RAG 服务初始化成功")
+
         # 初始化 SkillManager
         skill_manager = SkillManager.initialize(SKILLS_DIR)
         skill_manager.load_all_skills()
