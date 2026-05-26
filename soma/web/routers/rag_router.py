@@ -1,11 +1,13 @@
 # web/routers/rag_router.py
 import os
-import tempfile
+import uuid
 from fastapi import APIRouter, Body, UploadFile, File, Form, HTTPException
 from typing import Optional, List
 from pydantic import BaseModel
+from datetime import datetime
 
 from soma.config.logging_config import get_logger
+from soma.config.settings import WORKSPACE_DIR
 from soma.common.response import success_response, fail_response
 from soma.service.rag_service import rag_service
 from soma.core.rag.rag_tool import rag_search, rag_ingest
@@ -121,27 +123,32 @@ async def upload_document(collection_id: int, file: UploadFile = File(...), over
         if not collection:
             raise HTTPException(status_code=404, detail="知识库不存在")
 
-        # 保存上传文件到临时目录
         suffix = os.path.splitext(file.filename)[1].lower()
         if suffix not in ['.pdf', '.docx', '.doc', '.txt']:
             return fail_response(message="不支持的文件类型，仅支持 PDF/DOCX/DOC/TXT")
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        # 保存到 uploads/YYYY-MM-DD/ 目录
+        today = datetime.now().strftime("%Y-%m-%d")
+        upload_dir = os.path.join(WORKSPACE_DIR, "uploads", today)
+        os.makedirs(upload_dir, exist_ok=True)
+
+        # 生成唯一文件名
+        import uuid
+        unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+        file_path = os.path.join(upload_dir, unique_name)
+
+        with open(file_path, "wb") as f:
             content = await file.read()
-            tmp.write(content)
-            tmp_path = tmp.name
+            f.write(content)
 
         try:
-            result = rag_service.ingest_document(collection_id, tmp_path, overwrite=overwrite)
+            result = rag_service.ingest_document(collection_id, file_path, overwrite=overwrite)
             if not result:
                 return fail_response(message="文档处理失败")
             return success_response(data=result, message="文档上传成功")
-        finally:
-            # 清理临时文件
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+        except Exception as e:
+            logger.error(f"处理文档失败: {e}")
+            return fail_response(message=f"文档处理失败: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:

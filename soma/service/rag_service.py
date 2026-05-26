@@ -244,7 +244,7 @@ class RagService:
                     content=content,
                     content_hash=content_hash,
                     token_count=meta.get('token_count'),
-                    metadata_=json.dumps(meta)
+                    meta_data=json.dumps(meta)
                 )
                 session.add(chunk)
                 session.flush()
@@ -338,7 +338,7 @@ class RagService:
                     "document_id": chunk.document_id,
                     "document_name": chunk.document.file_name,
                     "collection_id": chunk.document.collection_id,
-                    "metadata": chunk.metadata_
+                    "metadata": chunk.meta_data
                 })
 
             search_results.sort(key=lambda x: x['score'], reverse=True)

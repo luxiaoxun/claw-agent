@@ -16,7 +16,7 @@ class KnowledgeCollectionModel(db_model_module.Base):
     description = Column(Text, nullable=True)
     chunk_size = Column(Integer, default=500)
     chunk_overlap = Column(Integer, default=50)
-    metadata_ = Column(Text, nullable=True)
+    meta_data = Column(Text, nullable=True)
     create_time = Column(DateTime, default=datetime.now)
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -29,7 +29,7 @@ class KnowledgeCollectionModel(db_model_module.Base):
             "description": self.description,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
-            "metadata": self.metadata_,
+            "metadata": self.meta_data,
             "create_time": self.create_time.isoformat() if self.create_time else None,
             "update_time": self.update_time.isoformat() if self.update_time else None,
         }
@@ -47,7 +47,7 @@ class RagDocumentModel(db_model_module.Base):
     file_size = Column(Integer, nullable=True)
     markdown_content = Column(Text, nullable=True)
     token_count = Column(Integer, nullable=True)
-    metadata_ = Column(Text, nullable=True)
+    meta_data = Column(Text, nullable=True)
     create_time = Column(DateTime, default=datetime.now)
 
     collection = relationship("KnowledgeCollectionModel", back_populates="documents")
@@ -62,7 +62,7 @@ class RagDocumentModel(db_model_module.Base):
             "file_type": self.file_type,
             "file_size": self.file_size,
             "token_count": self.token_count,
-            "metadata": self.metadata_,
+            "metadata": self.meta_data,
             "create_time": self.create_time.isoformat() if self.create_time else None,
         }
 
@@ -77,7 +77,7 @@ class RagChunkModel(db_model_module.Base):
     content = Column(Text, nullable=False)
     content_hash = Column(String(64), nullable=False)
     token_count = Column(Integer, nullable=True)
-    metadata_ = Column(Text, nullable=True)
+    meta_data = Column(Text, nullable=True)
     create_time = Column(DateTime, default=datetime.now)
 
     document = relationship("RagDocumentModel", back_populates="chunks")
@@ -89,7 +89,7 @@ class RagChunkModel(db_model_module.Base):
             "chunk_index": self.chunk_index,
             "content": self.content,
             "token_count": self.token_count,
-            "metadata": self.metadata_,
+            "metadata": self.meta_data,
             "create_time": self.create_time.isoformat() if self.create_time else None,
         }
 

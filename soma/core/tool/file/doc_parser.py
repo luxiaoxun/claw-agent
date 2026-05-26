@@ -381,8 +381,8 @@ def _run_extractors(file_path: Path) -> tuple[str, str, list[str]]:
         ]
     elif suffix == ".docx":
         extractors = [
-            ("markitdown", _extract_with_markitdown),
             ("docx-xml", _extract_docx_with_zipxml),
+            ("markitdown", _extract_with_markitdown),
             ("pandoc", _extract_with_pandoc),
         ]
     elif suffix == ".txt":
@@ -512,12 +512,37 @@ def doc_parser_callable(
 ) -> str:
     """
     Wrapper function for direct testing.
+    Returns the actual markdown content, not the status message.
     """
-    return doc_parser.invoke({
+    result = doc_parser.invoke({
         "input_path": input_path,
         "output_path": output_path,
         "overwrite": overwrite
     })
+    # If result indicates an error, return it directly
+    if result.startswith("Error:"):
+        return result
+    # Otherwise, read the actual markdown from output file
+    if output_path:
+        output_file = Path(output_path)
+    else:
+        # Generate same output path as doc_parser does
+        from soma.config.settings import WORKSPACE_DIR
+        workspace_dir = Path(WORKSPACE_DIR)
+        input_file = Path(input_path).expanduser().resolve()
+        if not input_file.is_absolute():
+            input_file = (workspace_dir / input_path).resolve()
+        today = dt.date.today().isoformat()
+        output_dir = workspace_dir / "outputs" / today
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "_", input_file.stem).strip("._") or "document"
+        suffix = input_file.suffix.lower().lstrip(".") or "file"
+        output_file = output_dir / f"{stem}_{suffix}.md"
+
+    if output_file.exists():
+        return output_file.read_text(encoding="utf-8")
+    # Fallback: if output file doesn't exist, return the result (for debugging)
+    return result
 
 
 if __name__ == "__main__":
