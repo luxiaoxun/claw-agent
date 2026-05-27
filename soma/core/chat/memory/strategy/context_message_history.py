@@ -195,4 +195,4 @@ class ContextChatMessageHistory(BaseChatMessageHistory):
         self._chat_rounds = []
         self._next_round_number = 1
         self._initialized = False
-        logger.info(f"会话 {self.session_id} 的消息历史已清空")
+        logger.debug(f"会话 {self.session_id} 的消息历史已清空")

@@ -25,15 +25,12 @@ def _format_rag_results(results: List[dict]) -> str:
     if not results:
         return "No relevant knowledge found for the query."
 
-    lines = ["=" * 60, "Knowledge Base Search Results", "=" * 60, ""]
+    lines = ["[Knowledge Base]"]
 
     for i, result in enumerate(results, 1):
-        lines.append(f"[Result {i}] (similarity: {result.get('score', 0):.3f})")
-        lines.append(f"Source: {result.get('document_name', 'unknown')}")
-        lines.append("-" * 40)
+        lines.append(f"[{i}] {result.get('document_name', 'unknown')} (score:{result.get('score', 0):.2f})")
         content = result.get('content', '')
         lines.append(content[:500] + "..." if len(content) > 500 else content)
-        lines.append("")
 
     return "\n".join(lines)
 
@@ -41,16 +38,14 @@ def _format_rag_results(results: List[dict]) -> str:
 @tool("rag_search", args_schema=RagSearchInput)
 def rag_search(query: str, collection_names: Optional[List[str]] = None, top_k: int = 5) -> str:
     """
-    Search knowledge bases for relevant information to enhance responses.
+    Search knowledge bases for relevant information.
 
-    This tool searches through uploaded documents and knowledge bases to find
-    information relevant to the query. Use this when answering questions that
-    might be answered by documents in the knowledge base.
+    IMPORTANT: Always use this tool proactively when answering questions about:
+    - TDA, DDAN, DDEI, AE or other NDR-related products
+    - Product manuals, user guides, operation documentation
+    - Troubleshooting, problem handling, or technical specifications
 
-    Args:
-        query: The search query text to retrieve relevant knowledge.
-        collection_names: Specific knowledge collection names to search in.
-        top_k: Maximum number of results to return.
+    Do NOT wait for user to explicitly say "search knowledge base".
 
     Returns:
         Formatted string containing search results with source attribution.
@@ -79,10 +74,6 @@ def rag_ingest(collection_name: str, file_path: str) -> str:
 
     Parses the document, splits it into chunks, and stores it in the specified
     knowledge collection for future retrieval.
-
-    Args:
-        collection_name: Target knowledge collection name.
-        file_path: Absolute or relative path to the document file.
 
     Returns:
         Formatted string with ingestion status and document metadata.

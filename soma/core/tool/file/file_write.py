@@ -14,7 +14,6 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB max file size for safety
 
 
 class FileWriteInput(BaseModel):
-    """Input parameters for file writing tool"""
     path: str = Field(description="File path (absolute path or relative path to 'workspace' directory)")
     content: str = Field(description="The content to write to the file")
 
@@ -27,10 +26,6 @@ def file_write(path: str, content: str) -> str:
     - This tool will overwrite the existing file if there is one at the provided path.
     - If this is an existing file, you MUST use the File Read tool first to read the file's contents. This tool will fail if you did not read the file first.
     - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
-
-    Parameters:
-    - path: File path (absolute path or relative path to 'workspace' directory)
-    - content: The content to write to the file
     """
     # Initialize workspace directory
     workspace_dir = Path(WORKSPACE_DIR)

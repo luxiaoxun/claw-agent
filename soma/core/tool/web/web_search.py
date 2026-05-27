@@ -37,11 +37,6 @@ def web_search(
 
     Usage:
         Search for information on the web based on keywords. Results include title, URL, and body text.
-
-    Args:
-        query: Search keywords, e.g., 'APT attack' or 'Python tutorial'
-        max_results: Maximum number of results to return, range 1-50, default 10
-        timeout: Request timeout in seconds, default 30
     """
     try:
         logger.info(f"Web search - query: '{query}', max_results: {max_results}, timeout: {timeout}s")

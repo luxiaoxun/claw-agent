@@ -203,12 +203,6 @@ def grep(
     - Search for pattern: pattern="log.*Error"
     - Filter by file type: pattern="TODO", include="*.py"
     - Search in specific directory: path="/path/to/dir", pattern="class.*"
-
-    Args:
-        pattern: The regex pattern to search for in file contents
-        path: Directory to search in. Defaults to current working directory.
-        include: File pattern filter (e.g. "*.js", "*.{ts,tsx}"). Only search files matching this pattern.
-        max_results: Maximum number of matches to return (default 100)
     """
     if not pattern:
         return "Error: pattern is required"

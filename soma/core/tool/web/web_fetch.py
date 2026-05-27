@@ -181,11 +181,6 @@ def web_fetch(
     - Supports text, markdown, and html output formats
     - Has a default timeout of 30 seconds (configurable up to 120 seconds)
     - Response size is limited to 5MB
-
-    Args:
-        url: The URL to fetch content from (must start with http:// or https://)
-        format: The format to return content in (text, markdown, or html). Defaults to markdown.
-        timeout: Timeout in seconds (max 120). Defaults to 30 seconds.
     """
     # Validate URL
     if not url.startswith("http://") and not url.startswith("https://"):

@@ -60,7 +60,7 @@ class PromptManager:
         """构建提示词内容（每次调用获取最新skills）"""
         all_skills = self.skill_manager.get_all_skill_descriptions()
 
-        prompt = f"""你是一个智能助手，能够处理各种数据查询和分析任务。
+        prompt = f"""你是Soma，一个智能助手，能够处理各种数据查询和分析任务。
 
 ## 工作流程
 

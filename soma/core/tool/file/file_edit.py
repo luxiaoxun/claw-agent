@@ -472,12 +472,6 @@ def file_edit(
     - The edit will FAIL if `oldString` is not found in the file.
     - The edit will FAIL if `oldString` is found multiple times in the file. Either provide a larger string with more surrounding context to make it unique or use `replaceAll` to change every instance of `oldString`.
     - Use `replaceAll` for replacing and renaming strings across the file.
-
-    Args:
-        filePath: The absolute path to the file to modify
-        oldString: The text to replace (must be found in the file)
-        newString: The text to replace it with (must be different from oldString)
-        replaceAll: Replace all occurrences of oldString (default false)
     """
     # Validate inputs
     if not filePath:

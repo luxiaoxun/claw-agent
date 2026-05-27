@@ -29,7 +29,7 @@ DOCX_SOFT_BREAK_TOKEN = "<<SOMA_AGENT_DOCX_SOFT_BREAK>>"
 class DocParserInput(BaseModel):
     """Input parameters for document parser tool"""
     input_path: str = Field(
-        description="Absolute or relative path to the source PDF / DOCX / DOC file."
+        description="Absolute or relative path to the source PDF/DOCX/DOC file."
     )
     output_path: Optional[str] = Field(
         default=None,
@@ -428,12 +428,6 @@ def doc_parser(
 
     If output_path is omitted, the markdown file is written to the workspace outputs
     directory for today.
-
-    Args:
-        input_path: Absolute or relative path to the source PDF / DOCX / DOC file.
-        output_path: Optional output markdown path. Absolute paths are used directly.
-                    Relative paths are resolved inside the workspace directory.
-        overwrite: Whether to overwrite an existing markdown output file.
 
     Returns:
         Formatted string with conversion result and metadata

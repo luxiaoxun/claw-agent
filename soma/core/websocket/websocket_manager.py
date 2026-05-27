@@ -165,7 +165,7 @@ class WebSocketConnectionManager:
             if session_manager:
                 try:
                     await session_manager.close()
-                    logger.info(f"客户端 {client_id} 的会话管理器已关闭")
+                    logger.debug(f"客户端 {client_id} 的会话管理器已关闭")
                 except Exception as e:
                     logger.error(f"关闭客户端 {client_id} 的会话管理器时出错: {str(e)}")
 

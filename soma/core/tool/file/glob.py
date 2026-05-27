@@ -64,9 +64,9 @@ def fallback_glob(cwd: str, pattern: str) -> List[str]:
 
 
 def ripgrep_files(
-    rg_path: str,
-    cwd: str,
-    glob_patterns: List[str]
+        rg_path: str,
+        cwd: str,
+        glob_patterns: List[str]
 ) -> List[str]:
     """Find files using ripgrep --files"""
     args = [
@@ -118,11 +118,6 @@ def glob(
     - Find all JavaScript files: pattern="**/*.js"
     - Find files in src directory: pattern="src/**/*.ts"
     - Search in specific directory: path="/path/to/dir"
-
-    Args:
-        pattern: Glob pattern to match files (e.g. "**/*.js", "*.py")
-        path: Directory to search in. Defaults to current working directory.
-        max_results: Maximum number of results to return (default 100)
     """
     if not pattern:
         return "Error: pattern is required"

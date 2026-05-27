@@ -211,13 +211,6 @@ def csv_read(
     - Automatically detects delimiter if not specified
     - Returns JSON array of objects (one per row)
     - Large files are truncated to max_rows
-
-    Args:
-        path: File path to CSV file
-        encoding: File encoding (utf-8, gbk, latin-1, etc.)
-        delimiter: CSV delimiter (auto-detected if not specified)
-        has_header: Whether the CSV has a header row
-        max_rows: Maximum number of data rows to return
     """
     workspace_dir = Path(WORKSPACE_DIR)
 
@@ -317,14 +310,6 @@ def csv_write(
     - Data can be a JSON array of objects or a CSV string
     - If data is array of objects, keys become headers
     - If data is 2D array, provide headers parameter
-
-    Args:
-        path: File path to write CSV
-        data: Data to write (JSON array or CSV string)
-        headers: Column headers (required if data is 2D array without header row)
-        encoding: File encoding
-        delimiter: CSV delimiter
-        overwrite: Whether to overwrite existing file
     """
     workspace_dir = Path(WORKSPACE_DIR)
 
@@ -421,14 +406,6 @@ def csv_filter(
     Filter expressions:
     - Comparison: age > 18, score >= 80, name == John
     - String: city contains Bei, url startswith https, email endswith .com
-
-    Args:
-        path: File path to CSV file
-        filter_expr: Filter expression (e.g., 'age > 18', 'name contains John')
-        encoding: File encoding
-        delimiter: CSV delimiter (auto-detected if not specified)
-        has_header: Whether the CSV has a header row
-        output_path: Optional path to save filtered results
     """
     workspace_dir = Path(WORKSPACE_DIR)
 

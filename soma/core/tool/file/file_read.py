@@ -38,9 +38,6 @@ def file_read(path: str) -> str:
     - Image files: Returns base64 encoded data
     - PDF files: Returns base64 encoded data
     - Automatically detects and rejects binary files
-
-    Parameters:
-    - path: File path (absolute path or relative path to workspace directory)
     """
     workspace_dir = Path(WORKSPACE_DIR)
 

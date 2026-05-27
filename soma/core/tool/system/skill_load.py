@@ -8,8 +8,7 @@ logger = get_logger(__name__)
 
 
 class SkillLoadInput(BaseModel):
-    """Input parameters for skill loading tool"""
-    skill_name: str = Field(description="Skill name to load, will read SKILLS_DIR/{skill_name}/SKILL.md")
+    skill_name: str = Field(description="Skill name to load")
 
 
 @tool("skill_load", args_schema=SkillLoadInput)
@@ -18,9 +17,6 @@ def skill_load(skill_name: str) -> str:
     Load skill content from SKILL.md file.
 
     Reads skill file from path: SKILLS_DIR/{skill_name}/SKILL.md
-
-    Parameters:
-    - skill_name: Name of the skill to load
     """
     skill_dir = Path(SKILLS_DIR)
 

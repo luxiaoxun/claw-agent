@@ -57,16 +57,6 @@ async def data_search(
 
     Usage:
         Search data based on conditions such as time range, IP address, threat level, and attack result, with support for SPL (Search Processing Language) syntax.
-
-    Args:
-        indexName: event(日志)/attack(告警)/incident(安全事件)
-        query: SPL查询语句，如: src_ip:172.17.6.1 AND severity>=3
-        timeType: 1=今日,2=近7天,3=近14天,4=近30天,5=自定义
-        timeLimit: 自定义时间，格式: '2026-03-16 00:00:00,2026-03-16 23:59:59'，仅当timeType=5时使用
-        pageNum: 页码，从1开始
-        pageSize: 每页数量，建议不超过20
-        sortField: 排序字段，如: severity
-        sortOrder: 排序方向: desc降序/asc升序
     """
     try:
         logger.info(f"Search data - index:{indexName}, time:{timeType}, page:{pageNum}/{pageSize}")

@@ -92,14 +92,6 @@ async def api_request(
     - Common methods: GET, POST, PUT, DELETE, PATCH
     - Headers commonly used: Content-Type, Authorization, Accept
     - Request body (data) will be JSON serialized automatically
-
-    Args:
-        url: The URL to send the request to
-        method: HTTP method (GET, POST, PUT, DELETE, PATCH), default is GET
-        headers: HTTP headers as key-value pairs
-        params: URL query parameters as key-value pairs
-        data: Request body data (will be JSON serialized)
-        timeout: Request timeout in seconds (max 120, default 30)
     """
     # Validate URL
     if not url.startswith("http://") and not url.startswith("https://"):
@@ -206,6 +198,7 @@ if __name__ == "__main__":
     print("Testing API Request Tool")
     print("=" * 80)
 
+
     async def test():
         # Test 1: GET request
         print("\n1. Testing GET request:")
@@ -236,5 +229,6 @@ if __name__ == "__main__":
             "timeout": 10
         })
         print(result)
+
 
     asyncio.run(test())

@@ -317,10 +317,4 @@ class ChatFileManager:
         """
         self._initialized = False
         self.file_contexts.clear()
-        logger.info(f"ChatFileManager 已关闭, session_id: {self.session_id}")
-
-    async def __aenter__(self):
-        return await self.initialize()
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+        logger.debug(f"ChatFileManager 已关闭, session_id: {self.session_id}")
