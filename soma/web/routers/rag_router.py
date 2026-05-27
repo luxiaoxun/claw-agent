@@ -1,10 +1,12 @@
 # web/routers/rag_router.py
 import os
 import uuid
-from fastapi import APIRouter, Body, UploadFile, File, Form, HTTPException
-from typing import Optional, List
+from fastapi import APIRouter, Body, UploadFile, File, Form, HTTPException, BackgroundTasks
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 from datetime import datetime
+import time
+import threading
 
 from soma.config.logging_config import get_logger
 from soma.config.settings import WORKSPACE_DIR
@@ -14,6 +16,27 @@ from soma.core.rag.rag_tool import rag_search, rag_ingest
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/rag", tags=["rag"])
+
+# ==================== 任务状态管理 ====================
+_ingest_tasks: Dict[str, dict] = {}
+_task_lock = threading.Lock()
+
+
+def _run_ingest(task_id: str, collection_id: int, file_path: str, overwrite: bool):
+    """后台执行的 ingestion"""
+    try:
+        _ingest_tasks[task_id]['status'] = 'processing'
+        result = rag_service.ingest_document(collection_id, file_path, overwrite=overwrite)
+        if result:
+            _ingest_tasks[task_id]['status'] = 'completed'
+            _ingest_tasks[task_id]['result'] = result
+        else:
+            _ingest_tasks[task_id]['status'] = 'failed'
+            _ingest_tasks[task_id]['error'] = '文档处理失败'
+    except Exception as e:
+        logger.error(f"[RAG] 后台摄入失败: {e}")
+        _ingest_tasks[task_id]['status'] = 'failed'
+        _ingest_tasks[task_id]['error'] = str(e)
 
 
 # ==================== Request Models ====================
@@ -117,7 +140,7 @@ async def list_documents(collection_id: int):
 
 @router.post("/collection/{collection_id}/document/upload")
 async def upload_document(collection_id: int, file: UploadFile = File(...), overwrite: bool = Form(False)):
-    """上传文档到知识库"""
+    """上传文档到知识库（异步处理）"""
     try:
         collection = rag_service.get_collection(collection_id)
         if not collection:
@@ -137,23 +160,52 @@ async def upload_document(collection_id: int, file: UploadFile = File(...), over
         unique_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
         file_path = os.path.join(upload_dir, unique_name)
 
+        content = await file.read()
         with open(file_path, "wb") as f:
-            content = await file.read()
             f.write(content)
 
-        try:
-            result = rag_service.ingest_document(collection_id, file_path, overwrite=overwrite)
-            if not result:
-                return fail_response(message="文档处理失败")
-            return success_response(data=result, message="文档上传成功")
-        except Exception as e:
-            logger.error(f"处理文档失败: {e}")
-            return fail_response(message=f"文档处理失败: {str(e)}")
+        # 创建任务
+        task_id = str(uuid.uuid4().hex[:16])
+        with _task_lock:
+            _ingest_tasks[task_id] = {
+                'status': 'pending',
+                'file_name': file.filename,
+                'collection_id': collection_id,
+                'result': None,
+                'error': None
+            }
+
+        # 后台执行
+        threading.Thread(
+            target=_run_ingest,
+            args=(task_id, collection_id, file_path, overwrite),
+            daemon=True
+        ).start()
+
+        return success_response(data={'task_id': task_id}, message="文档上传中...")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"上传文档失败: {e}")
         return fail_response(message=f"上传文档失败: {str(e)}")
+
+
+@router.get("/task/{task_id}/status")
+async def get_task_status(task_id: str):
+    """查询文档上传任务状态"""
+    with _task_lock:
+        task = _ingest_tasks.get(task_id)
+
+    if not task:
+        return fail_response(message="任务不存在")
+
+    return success_response(data={
+        'task_id': task_id,
+        'status': task['status'],
+        'file_name': task.get('file_name'),
+        'result': task.get('result'),
+        'error': task.get('error')
+    })
 
 
 @router.post("/collection/{collection_id}/document/{document_id}/delete")

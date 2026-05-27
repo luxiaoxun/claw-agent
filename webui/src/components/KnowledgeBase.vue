@@ -142,7 +142,7 @@ const formRef = ref(null)
 const form = reactive({
   name: '',
   description: '',
-  chunk_size: 500,
+  chunk_size: 300,
   chunk_overlap: 50
 })
 
@@ -171,7 +171,7 @@ const loadCollections = async () => {
 const showCreateDialog = () => {
   form.name = ''
   form.description = ''
-  form.chunk_size = 500
+  form.chunk_size = 300
   form.chunk_overlap = 50
   createDialogVisible.value = true
 }
@@ -227,14 +227,51 @@ const handleFileChange = async (e) => {
     ElMessage.warning('请先选择一个知识库')
     return
   }
+
+  const loadingMsg = ElMessage({ message: '文档上传中，正在处理...', duration: 0 })
+  const closeLoading = () => loadingMsg.close()
+
+  const startPolling = async (taskId) => {
+    const maxAttempts = 60
+    let attempts = 0
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 1000))
+      attempts++
+      const res = await ragApi.getTaskStatus(taskId)
+      if (res === null) {
+        // 请求失败，可能是服务器问题，终止轮询
+        closeLoading()
+        ElMessage.error('获取任务状态失败')
+        return false
+      }
+      // res 就是 task 对象 { task_id, status, result, error }
+      if (res.status === 'completed') {
+        closeLoading()
+        ElMessage.success(`文档已上传，创建了 ${res.result?.chunks_created || 0} 个块`)
+        viewDocuments(currentCollection.value)
+        return true
+      } else if (res.status === 'failed') {
+        closeLoading()
+        ElMessage.error(res.error || '文档处理失败')
+        return true
+      }
+      // pending/processing 继续等待
+    }
+    closeLoading()
+    ElMessage.warning('文档处理超时，请稍后刷新查看')
+    return false
+  }
+
   try {
     const result = await ragApi.uploadDocument(currentCollection.value.id, file)
-    if (result) {
-      ElMessage.success(`文档已上传，创建了 ${result.chunks_created} 个块`)
-      viewDocuments(currentCollection.value)
+    if (!result) {
+      closeLoading()
+      return
     }
+    await startPolling(result.task_id)
   } catch (e) {
     console.error('上传失败:', e)
+    closeLoading()
     ElMessage.error('上传失败')
   } finally {
     e.target.value = ''
@@ -286,7 +323,7 @@ const submitSearch = async () => {
       query: searchQuery.value,
       collection_ids: [currentCollection.value.id],
       top_k: 5,
-      similarity_threshold: 0.5
+      similarity_threshold: 0.25
     })
     if (data) {
       searchResults.value = data.results || []
@@ -433,8 +470,23 @@ defineExpose({
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+</style>
+
+<style>
+.el-message {
+  background-color: #303133 !important;
+  border-color: #303133 !important;
+}
+.el-message .el-message__content {
+  color: #fff;
+}
+.el-message .el-icon-info {
+  color: #fff;
 }
 </style>

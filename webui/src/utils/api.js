@@ -154,9 +154,11 @@ export const ragApi = {
         ElMessage.error(data.message || '上传失败')
         return null
       }
-      return data.data
+      return data.data  // { task_id: string }
     })
   },
+
+  getTaskStatus: (taskId) => api.get(`/rag/task/${taskId}/status`),
 
   deleteDocument: (collectionId, docId) => api.post(`/rag/collection/${collectionId}/document/${docId}/delete`),
 

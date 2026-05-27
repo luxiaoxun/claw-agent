@@ -1,6 +1,7 @@
 # service/rag_service.py
 import json
 import hashlib
+import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from pathlib import Path
@@ -12,7 +13,7 @@ from soma.service.database_manager import DatabaseManager
 from soma.service.rag_chroma_store import ChromaStore
 from soma.service.rag_embedding_service import rag_embedding_service
 from soma.core.tool.file.doc_parser import doc_parser_callable
-from soma.core.rag.chunker import chunk_text, compute_content_hash
+from soma.core.rag.rag_chunker import chunk_text, compute_content_hash
 
 logger = get_logger(__name__)
 
@@ -144,22 +145,36 @@ class RagService:
         logger.info(f"[RAG] 删除知识库: collection_id={collection_id}")
         session = self.db_manager.get_session()
         try:
-            docs = session.query(RagDocumentModel.id).filter(
+            # 获取所有文档及其文件路径
+            docs = session.query(RagDocumentModel).filter(
                 RagDocumentModel.collection_id == collection_id
             ).all()
-            doc_ids = [d[0] for d in docs]
+            doc_ids = [doc.id for doc in docs]
+            file_paths = [doc.file_path for doc in docs if doc.file_path]
             logger.info(f"[RAG] 删除知识库: 关联文档数={len(doc_ids)}")
 
+            # 删除向量数据
             if doc_ids:
                 for doc_id in doc_ids:
                     self.chroma_store.delete_by_document_id(doc_id)
 
+            # 删除数据库记录
             collection = session.query(KnowledgeCollectionModel).filter(
                 KnowledgeCollectionModel.id == collection_id
             ).first()
             if collection:
                 session.delete(collection)
                 session.commit()
+
+                # 删除物理文件
+                for file_path in file_paths:
+                    try:
+                        if file_path and os.path.exists(file_path):
+                            os.unlink(file_path)
+                            logger.info(f"[RAG] 已删除文件: {file_path}")
+                    except Exception as e:
+                        logger.warning(f"[RAG] 删除文件失败: {file_path}, {e}")
+
                 logger.info(f"[RAG] 删除知识库完成: collection_id={collection_id}")
                 return True
             logger.warning(f"[RAG] 删除知识库失败: 不存在 collection_id={collection_id}")
@@ -206,7 +221,8 @@ class RagService:
             if markdown_content.startswith("Error:"):
                 raise RuntimeError(f"文档解析失败: {markdown_content}")
 
-            logger.info(f"[RAG] 分块: {file_path_obj.name}, markdown长度={len(markdown_content)}, chunk_size={collection.chunk_size}")
+            logger.info(
+                f"[RAG] 分块: {file_path_obj.name}, markdown长度={len(markdown_content)}, chunk_size={collection.chunk_size}")
             chunks = chunk_text(
                 markdown_content,
                 chunk_size=int(collection.chunk_size),
@@ -289,10 +305,21 @@ class RagService:
             if not doc:
                 return False
 
+            # 获取文件路径并删除文件
+            file_path = doc.file_path
             self.chroma_store.delete_by_document_id(document_id)
 
             session.delete(doc)
             session.commit()
+
+            # 删除物理文件
+            try:
+                if file_path and os.path.exists(file_path):
+                    os.unlink(file_path)
+                    logger.info(f"[RAG] 已删除文件: {file_path}")
+            except Exception as e:
+                logger.warning(f"[RAG] 删除文件失败: {file_path}, {e}")
+
             return True
         except Exception as e:
             session.rollback()
@@ -302,9 +329,10 @@ class RagService:
             session.close()
 
     def search(self, query: str, collection_ids: Optional[List[int]] = None,
-               top_k: int = 5, similarity_threshold: float = 0.5) -> List[Dict]:
+               top_k: int = 5, similarity_threshold: float = 0.7) -> List[Dict]:
         """知识库检索"""
-        logger.info(f"[RAG] 检索: query={query[:50]}..., collection_ids={collection_ids}, top_k={top_k}, threshold={similarity_threshold}")
+        logger.info(
+            f"[RAG] 检索: query={query[:50]}..., collection_ids={collection_ids}, top_k={top_k}, threshold={similarity_threshold}")
         query_embedding = rag_embedding_service.embed_query(query)
 
         results = self.chroma_store.search(
@@ -315,7 +343,8 @@ class RagService:
             logger.info("[RAG] 检索完成: 无结果（低于阈值或无数据）")
             return []
 
-        logger.info(f"[RAG] 向量搜索完成: 初步结果={len(results)} 个, 分数范围={results[0][1]:.3f} - {results[-1][1]:.3f}")
+        logger.info(
+            f"[RAG] 向量搜索完成: 初步结果={len(results)} 个, 分数范围={results[0][1]:.3f} - {results[-1][1]:.3f}")
 
         chunk_ids = [r[0] for r in results]
         distances = {r[0]: r[1] for r in results}
