@@ -4,16 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Soma is a Python-based AI agent with a Vue 3 web UI. It provides chat-based interaction with LLM-powered agents that can use tools and skills to accomplish tasks.
+Soma is a Python-based AI agent with a Vue 3 web UI. It provides chat-based interaction with LLM-powered agents that can use tools, skills, and knowledge bases to accomplish tasks.
 
 ## Development Commands
 
 ### Backend (Python/FastAPI)
 ```bash
-# Install dependencies
 uv sync
-
-# Start server with uvicorn
 uv run uvicorn soma.main:app --host 0.0.0.0 --port 5000
 ```
 
@@ -21,263 +18,121 @@ uv run uvicorn soma.main:app --host 0.0.0.0 --port 5000
 ```bash
 cd webui
 npm install
-npm run dev      # Development server at http://localhost:5173
-npm run build    # Production build
+npm run dev      # http://localhost:5173
+npm run build
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        前端 (Vue 3 + Vite)                       │
-│  SessionSidebar ──── ChatWindow (WebSocket/HTTP)                │
-│  SkillManagement                                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        后端 (Python FastAPI)                     │
-│                                                                 │
-│  路由层 ──▶ ChatService ──▶ SessionManager ──▶ DeepAgent        │
-│                                      ├── MemoryManager          │
-│                                      └── FileManager            │
-│                    │                      │                    │
-│         ┌──────────┼──────────┐    ┌──────┴──────┐             │
-│         ▼          ▼          ▼    ▼             ▼             │
-│    AgentManager  Tools   SkillManager  Database  WebSocket       │
-│                          (workspace/skills/)                   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              IM Channel Layer (channel/)                 │  │
-│  │  FeishuClient / WeComClient (daemon thread)              │  │
-│  │      ↓                                                    │  │
-│  │  ChannelRouter → SessionManager → DeepAgent              │  │
-│  │      ↓                                                    │  │
-│  │  ChannelManager (管理 adapter 生命周期 from DB)           │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────┐     ┌─────────────────────────────┐
+│     前端 Vue 3 + Vite        │     │  后端 Python FastAPI         │
+│  SessionSidebar + ChatWindow│────▶│  ChatService → SessionManager│
+│  Workspace (文件/技能/知识库) │     │         → DeepAgent         │
+└─────────────────────────────┘     └─────────────────────────────┘
 ```
 
-### Backend (`app/`)
-- **core/agent/**: ReAct agent using LangChain (`deep_agent.py`). Initializes LLM, loads tools (base + MCP).
-- **core/chat/**: Chat orchestration - `chat_service.py` (HTTP), `session_manager.py` (会话), `chat_memory_manager.py` (历史).
-- **core/skill/**: Skill system - `skill_manager.py` loads from `workspace/skills/`.
-- **core/tool/**: Built-in tools - file operations, command execution, web search, Elasticsearch.
-- **core/websocket/**: Streaming responses and file uploads.
-- **channel/**: IM channel adapter layer (飞书等IM平台对接).
-  - `base.py`: `IChannelAdapter` 抽象类、`NormalizedMessage`、`IMContext` 数据类
-  - `channel_manager.py`: 从数据库加载配置，管理所有IM通道适配器生命周期
-  - `router.py`: `ChannelRouter` 将 IM 消息路由到 SessionManager
-  - `feishu/`: 飞书适配器实现 (`feishu_client.py`, `feishu_adapter.py`, `feishu_api.py`, `feishu_parser.py`)
-  - `wecom/`: 企业微信适配器实现 (`wecom_client.py`, `wecom_adapter.py`, `wecom_parser.py`)
-- **service/**: Database and Elasticsearch services.
-- **web/routers/**: FastAPI routes (chat, sessions, skills, tools, im).
-- **config/**: Settings from `.env`, logging.
+- **DeepAgent**: ReAct agent with LLM, loads base tools + MCP tools + RAG tools
+- **SessionManager**: 会话状态、记忆管理、文件上下文
+- **Channel adapters**: IM 平台接入（飞书、企业微信）
+
+## Directory Structure
+
+### Backend (`soma/`)
+
+| 目录 | 职责                                                 |
+|------|----------------------------------------------------|
+| `core/agent/` | DeepAgent 实现，LLM 初始化，工具加载                          |
+| `core/chat/` | ChatService、SessionManager、MemoryManager           |
+| `core/skill/` | 技能系统，从 `workspace/.soma/skills/` 加载                |
+| `core/tool/` | 内置工具：file_read/write/edit、doc_parser、web_search 等  |
+| `core/rag/` | RAG 知识库：chunker、embedding、vector_store、rag_service |
+| `core/websocket/` | WebSocket 流式响应和文件上传                                |
+| `channel/` | IM 通道适配器（飞书、企业微信）                                  |
+| `service/` | 数据库、Elasticsearch 服务                               |
+| `web/routers/` | FastAPI 路由                                         |
+| `config/` | 配置和日志                                              |
 
 ### Frontend (`webui/`)
-Vue 3 SPA with Vite. Communicates with backend via REST API (`/api/chat/message`) and WebSocket (`/api/chat/ws/message`).
 
-#### Frontend API Architecture (`webui/src/utils/api.js`)
+- `src/components/`: Vue 组件（ChatWindow、KnowledgeBase 等）
+- `src/utils/api.js`: 所有后端 API 调用
 
-All API calls are centralized in `api.js`:
+### Workspace (`workspace/`)
 
-```javascript
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-```
+- `skills/`: 技能目录，每个子目录含 `SKILL.md` + 可选 `references/`、`scripts/`
+- `uploads/`: 用户上传的文件
 
-| API | Description |
-|-----|-------------|
-| `api` | Generic HTTP methods: `get`, `post`, `put`, `delete` |
-| `channelApi` | Channel CRUD operations |
-| `sessionApi` | Session list/create/rename/delete/getMessages |
-| `workspaceApi` | Workspace tree/list/read |
-| `skillApi` | Skill list/get/preview/import |
-| `WS_BASE_URL()` | Dynamic WebSocket URL builder |
+## Key Configuration (`.env`)
 
-**Environment Configuration:**
-| Mode | `VITE_API_BASE_URL` | Example |
-|------|---------------------|---------|
-| Development | Full URL | `http://127.0.0.1:5000/api` |
-| Production (nginx) | Relative path | `/api` |
+| 变量 | 说明 |
+|------|------|
+| `OPENAI_API_KEY` | LLM 访问密钥 |
+| `LLM_MODEL`, `LLM_MODEL_PROVIDER` | 模型配置 |
+| `CONTEXT_STRATEGY` | 记忆压缩策略 |
 
-**WebSocket URL Logic:**
-```javascript
-WS_BASE_URL = () => {
-  if (API_BASE_URL.startsWith('http')) {
-    // Dev mode: extract host from full URL
-    return `${protocol}//${url.host}/api/chat/ws/message`
-  }
-  // Prod mode: use current host
-  return `${protocol}//${host}/api/chat/ws/message`
-}
-```
+## Tool System
 
-#### Session State Management (`ChatWindow.vue`)
+- **Base tools**: `file_read`, `file_write`, `file_edit`, `grep`, `bash`, `doc_parser`, `web_fetch`, `web_search`, `search_data`
+- **RAG tools**: `rag_search`, `rag_ingest`（自动从知识库检索）
+- **MCP tools**: 来自 `MCP_SERVER_URL`（可选）
 
-**Session Lifecycle:**
+## Key Singletons
 
-1. **新建会话**: 点击「新建会话」→ `sessionApi.create()` → `emit('new-session', session_id)` → ChatWindow props 更新 → `loadSessionHistory` → `connect()` WebSocket
-2. **点击历史会话**: 点击会话项 → `emit('select-session', session_id)` → ChatWindow props 更新 → `loadSessionHistory` → `connect()` WebSocket
-3. **发送消息**: 检查 WebSocket 状态，未连接时自动建立连接后再发送
-4. **连接状态**: Status tag 显示 `connected`（已连接）、`connecting`（连接中）、`disconnected`（已断开）
-
-**Status Transitions:**
-```
-idle → connecting → connected → disconnected
-                      ↓
-                  processing (发送消息时)
-```
-
-### Tool System (`app/core/tool/`)
-- **Base tools**: `file_read`, `file_write`, `file_edit`, `file_search`, `command_execute`, `doc_parser`, `web_fetch`, `web_search`, `search_data`
-- **MCP tools**: Loaded from `MCP_SERVER_URL` (optional)
-
-### Key Singletons
 | 单例 | 路径 | 职责 |
 |------|------|------|
 | `agent_manager` | `core/agent/agent_manager.py` | 共享 DeepAgent 实例 |
 | `chat_service` | `core/chat/chat_service.py` | HTTP 聊天请求 |
 | `session_manager` | `core/chat/session_manager.py` | 会话+记忆+文件上下文 |
-| `websocket_service` | `core/websocket/websocket_service.py` | WebSocket 连接 |
-| `skill_manager` | `core/skill/skill_manager.py` | 技能加载 |
-| `database_service` | `service/database_service.py` | 数据库访问 |
-| `channel_router` | `app/channel/router.py` | IM消息路由到SessionManager |
-| `channel_manager` | `app/channel/channel_manager.py` | IM通道生命周期管理 |
-
-### Workspace (`workspace/`)
-- `skills/`: Each subdirectory is a skill with `SKILL.md` + optional `references/`, `scripts/`, `assets/` directories.
-- `uploads/`: User-uploaded files.
-
-## Key Configuration (`.env`)
-- `OPENAI_API_KEY`: Required for LLM access
-- `LLM_MODEL`, `LLM_MODEL_PROVIDER`, `OPENAI_BASE_URL`: Model configuration
-- `ES_HOSTS`, `ES_USERNAME`, `ES_PASSWORD`: Elasticsearch connection for data search
-- `USE_MCP`, `MCP_SERVER_URL`: Optional MCP server for additional tools
-- `CONTEXT_STRATEGY`: Memory compression strategy (`round`, `token`, `message_count`)
+| `websocket_service` | `core/websocket/websocket_service.py` | WebSocket 流式响应和文件上传 |
+| `rag_service` | `service/rag_service.py` | 知识库 CRUD + 检索 |
+| `rag_embedding_service` | `service/rag_embedding_service.py` | 向量化服务 |
+| `channel_router` | `channel/router.py` | IM 消息路由到 SessionManager |
+| `channel_manager` | `channel/channel_manager.py` | IM 通道生命周期管理 |
 
 ## IM Channel Integration
 
-Soma supports receiving and responding to messages from IM platforms via an adapter pattern. Configuration is stored in SQLite database and managed via Web UI.
+Soma 支持通过适配器模式接入 IM 平台（飞书、企业微信）。
 
-### Architecture
+**数据流**: IM Platform → FeishuClient/WeComClient → ChannelRouter → SessionManager → DeepAgent → AI 回复
 
-```
-IM Platform ←WS long-poll→ FeishuClient / WeComClient (daemon thread)
-                              ↓
-                         FeishuParser / WeComParser → NormalizedMessage
-                              ↓
-                         ChannelRouter → SessionManager → DeepAgent
-                              ↓
-                         FeishuAPI.reply_text() / WeComAdapter.reply_to_message() → IM Platform
-```
+**ChannelManager 生命周期**:
+1. 启动时从数据库加载 `enabled=1` 的通道，启动长连接
+2. 运行时通过 Web UI 动态启用/停用/删除通道
+3. 关闭时停止所有适配器
 
-### Session Model
+## RAG Knowledge Base
 
-| Chat Type | Session ID | Description |
-|-----------|------------|-------------|
-| **P2P** | `hash(platform + user_id + chat_id)` | Each user in each chat gets unique session |
-| **Group** | `hash(platform + chat_id)` | All group members share one session |
+### Overview
 
-### Database Schema
+知识库系统支持上传 PDF/Word 文档，语义检索后增强 AI 回答。
 
-**tb_channel_config** - IM通道配置表
-| Column | Type | Description |
-|--------|------|-------------|
-| id | Integer (PK) | 自增ID |
-| platform | String(50) | 平台类型：`feishu` / `wecom` |
-| name | String(255) | 用户自定义名称 |
-| enabled | Integer | 0=停用, 1=启用 |
-| config | JSON | 平台凭证（app_id/app_secret 等） |
-| description | Text | 描述 |
-| create_time | DateTime | 创建时间 |
-| update_time | DateTime | 更新时间 |
+**流程**: 上传文档 → doc_parser 解析为 Markdown → chunker 分块 → embedding 向量化 → sqlite-vec 存储 → 检索
 
-**tb_channel_status** - IM通道运行时状态表
-| Column | Type | Description |
-|--------|------|-------------|
-| id | Integer (PK) | 自增ID |
-| channel_id | Integer (FK) | 关联 tb_channel_config.id |
-| status | String(50) | `connected` / `disconnected` / `error` |
-| last_heartbeat | DateTime | 最后心跳时间 |
-| error_message | Text | 错误信息 |
-| update_time | DateTime | 更新时间 |
+### Chunking Strategy
 
-### Key Components
+`soma/core/rag/chunker.py` 实现语义分块：
 
-| File | Purpose |
-|------|---------|
-| `channel/base.py` | `IChannelAdapter` 抽象类、`NormalizedMessage`、`IMContext` 数据类 |
-| `channel/channel_manager.py` | 从数据库加载配置，管理所有IM通道适配器生命周期 |
-| `channel/router.py` | 将 NormalizedMessage 路由到 SessionManager，发送AI响应 |
-| `channel/feishu/feishu_client.py` | `lark.ws.Client` 长连接，接收飞书事件（daemon thread 避免 event loop 冲突） |
-| `channel/feishu/feishu_adapter.py` | `IChannelAdapter` 实现，配置从数据库或环境变量读取 |
-| `channel/feishu/feishu_parser.py` | 解析 `P2ImMessageReceiveV1` → `NormalizedMessage` |
-| `channel/feishu/feishu_api.py` | REST API 发送消息：`message.create` / `message.reply` |
-| `channel/wecom/wecom_client.py` | `aibot.WSClient` 长连接，接收企业微信事件 |
-| `channel/wecom/wecom_adapter.py` | 企业微信 `IChannelAdapter` 实现 |
-| `channel/wecom/wecom_parser.py` | 解析企业微信帧 → `NormalizedMessage` |
-| `web/routers/channel_router.py` | 通道 CRUD API（创建/更新/删除/启用/停用） |
+1. 按 `## H2` 二级标题分割成最小语义单元
+2. 标题和其内容作为整体保留
+3. 表格保持完整性，不跨块分割
+4. chunk 大小不超过 `chunk_size * 1.1`
+5. 小于 80 字符的块合并到前一个
 
-### Web UI Channel Management
+**推荐配置**: `chunk_size=300`, `chunk_overlap=50`
 
-导航菜单「消息通道」→ `ChannelManagement.vue`
-- 列表展示所有通道（平台/名称/状态/连接状态/创建时间）
-- 创建/编辑通道：选择平台（飞书/企业微信），填写配置信息
-- 启用/停用通道：通过开关直接控制，实时通知 ChannelManager
-- 删除通道：先停止适配器，再删除数据库记录
+### Embedding
 
-### ChannelManager Lifecycle
-
-1. **启动时**：`main.py` lifespan 调用 `channel_manager.start_all()`
-   - 从数据库加载所有 `enabled=1` 的通道
-   - 根据 `platform` 创建对应适配器（FeishuAdapter / WeComAdapter）
-   - 调用 `adapter.start_with_config(config)` 启动长连接
-   - 更新数据库状态为 `connected`
-
-2. **运行时**：通过 Web UI 或 API 动态管理
-   - **启用通道**：`channel_router.enable_channel()` → `cm.start_channel()`
-   - **停用通道**：`channel_router.disable_channel()` → `cm.stop_channel()`
-   - **删除通道**：先 `cm.stop_channel()`，再删除数据库记录
-
-3. **关闭时**：`main.py` lifespan 调用 `channel_manager.stop_all()`
-   - 停止所有适配器，清理长连接
-
-### WeCom Event Data Structure (aibot SDK)
-
-```
-frame.body:
-  chatid       → chat_id (群聊时)
-  chattype     → 'single' / 'group'
-  content      → 消息内容（文本）
-  from.userid  → user_id
-  msgid        → message_id
-  msgtype      → 'text'
-  robotagentid → bot_id
-```
-
-### Feishu Event Data Structure (lark-oapi 1.6.x)
-
-```
-P2ImMessageReceiveV1
-  .event.message.chat_id        → chat_id
-  .event.message.message_id     → message_id (用于回复)
-  .event.message.message_type   → text/post/image等
-  .event.message.content        → JSON string
-  .event.message.chat_type      → p2p/group
-  .event.sender.sender_id.open_id → user_id
-```
-
-## API Endpoints
-- `POST /api/chat/message`: Send chat message (HTTP)
-- `WebSocket /api/chat/ws/message`: Streaming chat with file upload support
-- `GET /api/docs`: Swagger documentation at http://127.0.0.1:5000/docs
+中文文档使用 `bge-base-zh`（768维），英文使用 `all-MiniLM-L6-v2`（384维）
 
 ## API Response Format
+
 All REST API responses follow this format:
+
 ```json
 {
   "code": "200",        // String: "200" = success, other = failure
-  "message": "success",  // Human-readable message
-  "data": { ... }        // Response data (null on failure)
+  "message": "success", // Human-readable message
+  "data": { ... }       // Response data (null on failure)
 }
 ```
