@@ -1,54 +1,106 @@
 <template>
   <div class="chat-container">
-    <!-- 消息输出区域 -->
-    <el-card class="output" ref="outputRef" shadow="hover">
-      <div
-        v-if="dragActive"
-        class="drag-overlay"
-        @dragenter="handleDragEnter"
-        @dragleave="handleDragLeave"
-        @dragover="handleDragOver"
-        @drop="handleDrop"
-      >
-        <div class="drag-content">
-          <el-icon :size="32"><Upload /></el-icon>
-          <span style="margin-top: 8px;">释放文件以上传</span>
+    <!-- 欢迎状态（无会话时） -->
+    <div v-if="!sessionId && messages.length === 0" class="welcome-container">
+      <div class="welcome-content">
+        <div class="welcome-icon">
+          <el-icon :size="32"><MagicStick /></el-icon>
+        </div>
+        <h2 class="welcome-title">欢迎使用 Soma 智能体</h2>
+        <p class="welcome-desc">我可以帮助你完成各种任务，请开始对话吧</p>
+
+        <div class="welcome-input-wrapper">
+          <el-input
+            v-model="inputMessage"
+            type="textarea"
+            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            :rows="4"
+            :autosize="{ minRows: 4, maxRows: 8 }"
+            resize="none"
+            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.enter.shift="handleShiftEnter"
+          />
+          <div class="welcome-input-actions">
+            <el-button circle @click="openFileSelector" title="上传文件" size="small">
+              <el-icon><Upload /></el-icon>
+            </el-button>
+            <el-button
+              circle
+              type="primary"
+              :disabled="!inputMessage.trim()"
+              @click="sendMessage"
+              title="发送"
+              size="small"
+            >
+              <el-icon><Promotion /></el-icon>
+            </el-button>
+          </div>
         </div>
       </div>
-
-      <div v-if="loadingHistory" class="loading-history">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        加载历史消息...
-      </div>
-
-      <div
-          v-for="(msg, index) in messages"
-          :key="index"
-          :class="msg.className"
-          v-html="msg.html"
-      ></div>
-    </el-card>
-
-    <!-- 输入区域 -->
-    <div class="input-area">
-      <el-input
-        v-model="inputMessage"
-        type="textarea"
-        placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-        :rows="3"
-        :autosize="{ minRows: 3, maxRows: 6 }"
-        resize="none"
-        @keydown.enter.exact.prevent="sendMessage"
-        @keydown.enter.shift="handleShiftEnter"
-      />
-      <el-button
-        circle
-        @click="openFileSelector"
-        title="上传文件"
-      >
-        <el-icon><Upload /></el-icon>
-      </el-button>
     </div>
+
+    <!-- 聊天状态（有会话时） -->
+    <template v-else>
+      <!-- 消息输出区域 -->
+      <el-card class="output" ref="outputRef" shadow="hover">
+        <div
+          v-if="dragActive"
+          class="drag-overlay"
+          @dragenter="handleDragEnter"
+          @dragleave="handleDragLeave"
+          @dragover="handleDragOver"
+          @drop="handleDrop"
+        >
+          <div class="drag-content">
+            <el-icon :size="32"><Upload /></el-icon>
+            <span style="margin-top: 8px;">释放文件以上传</span>
+          </div>
+        </div>
+
+        <div v-if="loadingHistory" class="loading-history">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          加载历史消息...
+        </div>
+
+        <div
+            v-for="(msg, index) in messages"
+            :key="index"
+            :class="msg.className"
+            v-html="msg.html"
+        ></div>
+      </el-card>
+
+      <!-- 输入区域 -->
+      <div class="input-area">
+        <div class="input-wrapper">
+          <el-input
+            v-model="inputMessage"
+            type="textarea"
+            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            :rows="4"
+            :autosize="{ minRows: 4, maxRows: 8 }"
+            resize="none"
+            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.enter.shift="handleShiftEnter"
+          />
+          <div class="input-actions">
+            <el-button circle @click="openFileSelector" title="上传文件" size="small">
+              <el-icon><Upload /></el-icon>
+            </el-button>
+            <el-button
+              circle
+              type="primary"
+              :disabled="!inputMessage.trim()"
+              @click="sendMessage"
+              title="发送"
+              size="small"
+            >
+              <el-icon><Promotion /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <!-- 隐藏的文件输入 -->
     <input
@@ -74,7 +126,7 @@
 <script setup>
 import {ref, computed, onMounted, onUnmounted, nextTick, watch} from 'vue'
 import { ElIcon, ElTag } from 'element-plus'
-import { Upload, Loading } from '@element-plus/icons-vue'
+import { Upload, Loading, MagicStick, Promotion } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { API_BASE_URL, WS_BASE_URL, sessionApi } from '../utils/api'
 
@@ -574,7 +626,12 @@ const sendMessage = () => {
   const message = inputMessage.value.trim()
 
   if (!message) {
-    addMessage('系统', '请输入消息内容', 'system')
+    return
+  }
+
+  // 如果没有会话ID，先创建会话
+  if (!sessionId.value) {
+    createSessionAndSend(message)
     return
   }
 
@@ -589,6 +646,33 @@ const sendMessage = () => {
     return
   }
 
+  doSendMessage(message)
+}
+
+const createSessionAndSend = async (message) => {
+  try {
+    const data = await sessionApi.create()
+    if (data && data.session_id) {
+      sessionId.value = data.session_id
+      emit('session-created', data.session_id)
+      // 等待会话创建后再发送
+      await nextTick()
+      connect()
+      ws.value?.addEventListener('open', () => {
+        setTimeout(() => {
+          doSendMessage(message)
+        }, 100)
+      }, { once: true })
+    } else {
+      addMessage('错误', '创建会话失败', 'error')
+    }
+  } catch (e) {
+    console.error('创建会话失败:', e)
+    addMessage('错误', `创建会话失败: ${e.message}`, 'error')
+  }
+}
+
+const doSendMessage = (message) => {
   const messageData = {
     message: message,
     session_id: sessionId.value
@@ -766,6 +850,94 @@ onUnmounted(() => {
   padding: 16px 20px;
 }
 
+/* ===== 欢迎状态样式 ===== */
+.welcome-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 20px 40px;
+  box-sizing: border-box;
+}
+
+.welcome-content {
+  text-align: center;
+  width: 100%;
+  max-width: 900px;
+}
+
+.welcome-icon {
+  color: #409eff;
+  margin-bottom: 16px;
+}
+
+.welcome-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 12px 0;
+}
+
+.welcome-desc {
+  font-size: 14px;
+  color: #909399;
+  margin: 0 0 32px 0;
+}
+
+.welcome-input-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: left;
+  min-width: 600px;
+  max-width: 900px;
+}
+
+.welcome-input-wrapper :deep(.el-textarea) {
+  width: 100%;
+}
+
+.welcome-input-wrapper :deep(.el-textarea__inner) {
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 80px;
+}
+
+.welcome-input-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ===== 聊天输入框样式 ===== */
+.input-area {
+  margin-top: 16px;
+}
+
+.input-wrapper {
+  position: relative;
+  border-radius: 8px;
+}
+
+.input-wrapper :deep(.el-textarea__inner) {
+  padding-right: 80px;
+}
+
+.input-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 .output {
   position: relative;
   flex: 1;
@@ -774,10 +946,19 @@ onUnmounted(() => {
   padding: 16px;
   min-height: 300px;
   overflow-y: auto;
-  background-color: #fafafa;
+  background-color: #f5f5f5;
   transition: all 0.3s ease;
 }
 
+/* 消息容器 */
+:deep(.message-item) {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 拖拽上传 */
 .drag-overlay {
   position: absolute;
   top: 0;
@@ -801,83 +982,6 @@ onUnmounted(() => {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   font-size: 16px;
   color: #2196f3;
-}
-
-.loading-history {
-  text-align: center;
-  padding: 20px;
-  color: #666;
-}
-
-.input-area {
-  margin-top: 16px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.input-area .el-input {
-  flex: 1;
-}
-
-.button-group {
-  display: flex;
-  gap: 8px;
-}
-
-.file-btn {
-  background-color: #9c27b0;
-  color: white;
-  font-size: 16px;
-  width: 40px;
-}
-
-.file-btn:hover {
-  background-color: #7b1fa2;
-}
-
-.error {
-  color: #cc0000;
-}
-
-.system {
-  color: #666666;
-  font-style: italic;
-}
-
-.user {
-  color: #000000;
-  font-weight: bold;
-}
-
-.assistant {
-  color: #000000;
-}
-
-.warning {
-  color: #ff9900;
-  font-style: italic;
-}
-
-/* ===== 新消息样式 ===== */
-.output {
-  position: relative;
-  flex: 1;
-  margin-top: 16px;
-  border-radius: 8px;
-  padding: 16px;
-  min-height: 300px;
-  overflow-y: auto;
-  background-color: #f5f5f5;
-  transition: all 0.3s ease;
-}
-
-/* 消息容器 */
-:deep(.message-item) {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 /* 用户消息 - 蓝色背景，右对齐 */
@@ -1055,23 +1159,7 @@ onUnmounted(() => {
   color: #555;
 }
 
-/* ===== 保留原有样式 ===== */
-.input-area {
-  margin-top: 16px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.input-area :deep(.el-input) {
-  flex: 1;
-}
-
-.button-group {
-  display: flex;
-  gap: 8px;
-}
-
+/* 状态栏 */
 .status {
   margin-top: 12px;
   font-size: 12px;
