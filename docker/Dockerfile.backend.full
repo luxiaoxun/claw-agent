@@ -33,7 +33,6 @@ ENV PYTHONUNBUFFERED=1
 
 # Copy application code
 COPY soma/ ./soma/
-COPY workspace/ ./workspace/
 COPY .env.example ./
 
 # Create necessary directories
