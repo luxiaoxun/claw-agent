@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from sqlalchemy import func
 from soma.config.logging_config import get_logger
-from soma.model.db_model import ChannelConfigModel, ChannelStatusModel
+from soma.model.channel_model import ChannelConfigModel, ChannelStatusModel
 from soma.service.database_manager import DatabaseManager
 
 logger = get_logger(__name__)

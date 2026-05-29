@@ -2,12 +2,10 @@
 from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
-# Import Base at runtime to avoid circular import issues
-import soma.model.db_model as db_model_module
+from soma.model.db_model import Base
 
 
-class KnowledgeCollectionModel(db_model_module.Base):
+class KnowledgeCollectionModel(Base):
     """知识库集合表"""
     __tablename__ = 'tb_knowledge_collection'
 
@@ -35,7 +33,7 @@ class KnowledgeCollectionModel(db_model_module.Base):
         }
 
 
-class RagDocumentModel(db_model_module.Base):
+class RagDocumentModel(Base):
     """文档表"""
     __tablename__ = 'tb_rag_document'
 
@@ -67,7 +65,7 @@ class RagDocumentModel(db_model_module.Base):
         }
 
 
-class RagChunkModel(db_model_module.Base):
+class RagChunkModel(Base):
     """文档块表"""
     __tablename__ = 'tb_rag_chunk'
 
