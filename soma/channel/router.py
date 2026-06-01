@@ -59,7 +59,8 @@ class ChannelRouter(IChannelRouter):
         try:
             # Generate session_id based on chat type
             session_id = self._generate_session_id(message)
-            logger.info(f"Routing {message.platform} message: session_id={session_id}, is_group={message.is_group}")
+            logger.info(
+                f"Routing {message.platform} message: session_id={session_id}, user_id={message.user_id}, is_group={message.is_group}")
 
             # Get or create SessionManager for this session
             if session_id not in self._session_managers:

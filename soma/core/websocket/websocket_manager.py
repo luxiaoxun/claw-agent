@@ -14,13 +14,14 @@ class WebSocketConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, Dict] = {}
 
-    async def connect(self, websocket: WebSocket, client_id: str = None) -> str:
+    async def connect(self, websocket: WebSocket, client_id: str = None, user_id: str = None) -> str:
         """
         接受新连接并创建会话
 
         Args:
             websocket: WebSocket 连接对象
             client_id: 客户端ID（可选，不提供则自动生成）
+            user_id: 用户ID（可选）
 
         Returns:
             client_id: 客户端ID
@@ -35,11 +36,11 @@ class WebSocketConnectionManager:
             "websocket": websocket,
             "session_manager": None,
             "session_id": None,
-            "user_id": None,
+            "user_id": user_id,
             "initialized": False
         }
 
-        logger.debug(f"WebSocket 客户端 {client_id} 已连接")
+        logger.debug(f"WebSocket 客户端 {client_id} 已连接, user_id={user_id}")
         return client_id
 
     async def get_or_create_session_manager(self, client_id: str, session_id: str = None,
@@ -50,7 +51,7 @@ class WebSocketConnectionManager:
         Args:
             client_id: 客户端ID
             session_id: 会话ID（可以为 None）
-            user_id: 用户ID（可选）
+            user_id: 用户ID（可选，如果为 None 则使用连接中存储的 user_id）
 
         Returns:
             SessionManager: 会话管理器实例
@@ -58,6 +59,10 @@ class WebSocketConnectionManager:
         conn = self.active_connections.get(client_id)
         if not conn:
             raise ValueError(f"客户端 {client_id} 不存在")
+
+        # 如果 user_id 未提供，使用连接中存储的 user_id
+        if user_id is None:
+            user_id = conn.get("user_id")
 
         session_manager = conn.get("session_manager")
 
@@ -74,7 +79,7 @@ class WebSocketConnectionManager:
 
             # 创建新的会话管理器
             new_session_id = str(uuid.uuid4())
-            new_session_manager = SessionManager()
+            new_session_manager = SessionManager(session_id=new_session_id, user_id=user_id)
             try:
                 await new_session_manager.initialize(
                     session_id=new_session_id,
@@ -111,7 +116,7 @@ class WebSocketConnectionManager:
                     logger.error(f"关闭旧会话管理器失败: {str(e)}")
 
             # 创建新的会话管理器
-            new_session_manager = SessionManager()
+            new_session_manager = SessionManager(session_id=session_id, user_id=user_id)
             try:
                 await new_session_manager.initialize(
                     session_id=session_id,

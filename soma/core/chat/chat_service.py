@@ -15,14 +15,16 @@ class ChatService:
         """初始化聊天服务"""
         self.session_managers: Dict[str, SessionManager] = {}
 
-    async def process_chat_request(self, message: str, session_id: Optional[str] = None) -> Tuple[
+    async def process_chat_request(self, message: str, session_id: Optional[str] = None,
+                                   user_id: Optional[str] = None) -> Tuple[
         Optional[Dict[str, Any]], Optional[str]]:
         """
         处理聊天请求
 
         Args:
             message: 用户消息内容
-            session_id: 会话ID（可选，不提供则自动生成）
+            session_id: 会话ID
+            user_id: 用户ID
 
         Returns:
             Tuple[响应数据, 错误信息]
@@ -41,7 +43,7 @@ class ChatService:
                 session_id = str(uuid.uuid4())
 
             # 3. 创建并初始化会话管理器
-            session_manager = SessionManager(session_id=session_id)
+            session_manager = SessionManager(session_id=session_id, user_id=user_id)
             await session_manager.initialize()
 
             # 4. 处理消息

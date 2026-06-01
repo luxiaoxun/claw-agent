@@ -52,8 +52,8 @@ class SessionManager:
         初始化对话管理器
 
         Args:
-            session_id: 会话ID（可选）
-            user_id: 用户ID（可选）
+            session_id: 会话ID
+            user_id: 用户ID
         """
         if self._initialized:
             logger.debug(f"SessionManager 已初始化，session_id: {self.session_id}")
@@ -96,7 +96,6 @@ class SessionManager:
             增强后的消息列表
         """
 
-        # 将最近的 MAX_MSG_HISTORY_LENGTH 次对话轮次转换为消息列表
         context_history = self.memory_manager.get_context_history()
 
         # 获取文件上下文消息

@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # 安全配置
     HIGH_RISK_TOOLS: List[str] = ["block_ips"]
 
+    # 鉴权配置
+    AUTH_MODE: str = os.getenv("AUTH_MODE", "shared")  # shared | standalone
+    API_KEY: Optional[str] = os.getenv("API_KEY")  # Standalone 模式下的 API Key
+    TRUSTED_ORIGINS: str = os.getenv("TRUSTED_ORIGINS", "*")  # Shared 模式信任的来源域名，逗号分隔
+    VERIFY_SHARED_TOKEN: bool = os.getenv("VERIFY_SHARED_TOKEN", "false").lower() == "true"  # 是否验证 Shared Token
+
     class Config:
         env_file = ".env"
         case_sensitive = True

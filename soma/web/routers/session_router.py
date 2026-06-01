@@ -1,10 +1,11 @@
 # web/routers/session_router.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Optional, List
 from pydantic import BaseModel
 from soma.service.database_service import database_service
 from soma.config.logging_config import get_logger
 from soma.common.response import success_response, fail_response
+from soma.web.dependencies import get_current_user_id
 import uuid
 
 logger = get_logger(__name__)
@@ -52,17 +53,17 @@ class SessionListResponse(BaseModel):
 
 @router.get("/")
 async def list_sessions(
-        user_id: Optional[str] = None,
+        current_user_id: str = Depends(get_current_user_id),
         limit: int = 50,
         offset: int = 0
 ):
     """获取会话列表"""
     try:
-        logger.info(f"获取会话列表: user_id={user_id}, limit={limit}, offset={offset}")
+        logger.info(f"获取会话列表: user_id={current_user_id}, limit={limit}, offset={offset}")
 
         # 使用 session_service 获取会话列表
         sessions = database_service.session_service.list_sessions(
-            user_id=user_id,
+            user_id=current_user_id,
             limit=limit,
             offset=offset
         )
@@ -133,17 +134,22 @@ async def get_session(session_id: str):
 
 
 @router.post("/create")
-async def create_session(session_data: SessionCreate):
+async def create_session(
+        session_data: SessionCreate,
+        current_user_id: str = Depends(get_current_user_id)
+):
     """创建新会话"""
     try:
         session_id = session_data.session_id or str(uuid.uuid4())
-        logger.info(f"创建会话: session_id={session_id}, user_id={session_data.user_id}")
+        # 优先使用请求体中的 user_id，否则使用当前登录用户
+        user_id = session_data.user_id or current_user_id
+        logger.info(f"创建会话: session_id={session_id}, user_id={user_id}")
 
         # 使用 session_service 创建会话
         success = database_service.session_service.create_session(
             session_id=session_id,
             title=session_data.title,
-            user_id=session_data.user_id,
+            user_id=user_id,
             meta_data=session_data.meta_data
         )
 
@@ -248,14 +254,14 @@ async def get_session_messages(
 
 
 @router.get("/statistics")
-async def get_statistics(user_id: Optional[str] = None):
+async def get_statistics(current_user_id: str = Depends(get_current_user_id)):
     """获取会话统计信息"""
     try:
-        logger.info(f"获取统计信息: user_id={user_id}")
+        logger.info(f"获取统计信息: user_id={current_user_id}")
 
         # 获取所有会话
         sessions = database_service.session_service.list_sessions(
-            user_id=user_id,
+            user_id=current_user_id,
             limit=10000,  # 获取所有会话用于统计
             offset=0
         )
@@ -275,10 +281,10 @@ async def get_statistics(user_id: Optional[str] = None):
 
         stats = {
             "total_sessions": total_sessions,
-            "total_rounds": total_rounds,  # 修改：total_messages -> total_rounds
-            "sessions_with_rounds": sessions_with_rounds,  # 修改：sessions_with_messages -> sessions_with_rounds
+            "total_rounds": total_rounds,
+            "sessions_with_rounds": sessions_with_rounds,
             "avg_rounds_per_session": total_rounds / total_sessions if total_sessions > 0 else 0,
-            "user_id": user_id or "all"
+            "user_id": current_user_id
         }
 
         return success_response(

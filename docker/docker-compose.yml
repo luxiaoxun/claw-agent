@@ -12,6 +12,11 @@ services:
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - CONTEXT_STRATEGY=${CONTEXT_STRATEGY:-round}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # 鉴权配置
+      - AUTH_MODE=${AUTH_MODE:-shared}
+      - API_KEY=${API_KEY:-}
+      - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-*}
+      - VERIFY_SHARED_TOKEN=${VERIFY_SHARED_TOKEN:-false}
     volumes:
       - /home/work/soma/docker/workspace:/app/workspace
       - /home/work/soma/docker/logs:/app/logs
@@ -21,6 +26,10 @@ services:
     image: soma-frontend:1.0.0
     container_name: soma-frontend
     network_mode: host
+    environment:
+      # 前端鉴权配置
+      - VITE_AUTH_MODE=${VITE_AUTH_MODE:-shared}
+      - VITE_API_KEY=${VITE_API_KEY:-}
     restart: unless-stopped
     depends_on:
       - backend

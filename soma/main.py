@@ -5,6 +5,7 @@ from soma.config.settings import settings, SKILLS_DIR
 from soma.config.logging_config import setup_logging, get_logger
 from soma.web.routers import api_router
 from soma.web.middlewares.error_handler import register_error_handlers
+from soma.web.middlewares.auth import AuthMiddleware
 from soma.core.agent.agent_manager import agent_manager
 from soma.core.skill.skill_manager import SkillManager
 from soma.service.database_service import database_service
@@ -114,6 +115,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 注册认证中间件
+    app.add_middleware(AuthMiddleware)
 
     # 注册路由
     app.include_router(api_router, prefix="/api")

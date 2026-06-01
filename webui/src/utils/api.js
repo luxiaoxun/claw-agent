@@ -1,10 +1,32 @@
 import { ElMessage } from 'element-plus'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+const AUTH_MODE = import.meta.env.VITE_AUTH_MODE || 'shared'
+const API_KEY = import.meta.env.VITE_API_KEY || ''
+
+function getAuthHeaders() {
+  if (AUTH_MODE === 'standalone') {
+    // Standalone 模式: 使用 API Key
+    if (API_KEY) {
+      return { 'X-API-Key': API_KEY }
+    }
+  } else {
+    // Shared 模式: 从 localStorage 获取用户信息
+    const userId = localStorage.getItem('shared_user_id')
+    if (userId) {
+      return { 'X-User-Id': userId }
+    }
+    // Shared 模式: 开发环境下使用默认用户
+    if (import.meta.env.DEV) {
+      return { 'X-User-Id': 'admin' }
+    }
+  }
+  return {}
+}
 
 async function request(url, options = {}) {
   try {
-    const headers = options.headers || {}
+    const headers = { ...options.headers, ...getAuthHeaders() }
     const res = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
       headers
@@ -85,15 +107,30 @@ export { API_BASE_URL }
 export const WS_BASE_URL = () => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
+
+  // 获取认证信息
+  let userId = 'admin'
+  if (AUTH_MODE === 'standalone' && API_KEY) {
+    // Standalone 模式暂不支持 WebSocket
+  } else {
+    // Shared 模式
+    const storedUserId = localStorage.getItem('shared_user_id')
+    if (storedUserId) {
+      userId = storedUserId
+    } else if (import.meta.env.DEV) {
+      userId = 'admin'
+    }
+  }
+
   // 开发模式下 VITE_API_BASE_URL 配置了完整后端地址 (http://127.0.0.1:5000/api)
   // WebSocket 需要直连后端，不走 Vite 代理
   if (API_BASE_URL.startsWith('http')) {
     // 完整 URL 模式：提取 host 并拼接 ws 路径
     const url = new URL(API_BASE_URL)
-    return `${protocol}//${url.host}/api/chat/ws/message`
+    return `${protocol}//${url.host}/api/chat/ws/message?user_id=${encodeURIComponent(userId)}`
   }
   // 生产模式或相对路径模式：使用当前主机
-  return `${protocol}//${host}/api/chat/ws/message`
+  return `${protocol}//${host}/api/chat/ws/message?user_id=${encodeURIComponent(userId)}`
 }
 
 // Session APIs
@@ -144,7 +181,7 @@ export const ragApi = {
   uploadDocument: (collectionId, file) => {
     const formData = new FormData()
     formData.append('file', file)
-    const headers = {}
+    const headers = { ...getAuthHeaders() }
     return fetch(`${API_BASE_URL}/rag/collection/${collectionId}/document/upload`, {
       method: 'POST',
       headers,

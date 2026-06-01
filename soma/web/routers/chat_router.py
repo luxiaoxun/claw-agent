@@ -1,16 +1,20 @@
 # web/routers/chat_router.py
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, Request, WebSocket, Depends, Query
 from soma.common.response import success_response, fail_response
 from soma.config.logging_config import get_logger
 from soma.core.websocket.websocket_service import websocket_service
 from soma.core.chat.chat_service import chat_service
+from soma.web.dependencies import get_current_user_id
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/message")
-async def chat(request: Request):
+async def chat(
+        request: Request,
+        current_user_id: str = Depends(get_current_user_id)
+):
     """处理聊天请求"""
     try:
         # 1. 解析请求数据
@@ -21,7 +25,8 @@ async def chat(request: Request):
         # 2. 调用聊天服务处理
         response_data, error = await chat_service.process_chat_request(
             message=message,
-            session_id=session_id
+            session_id=session_id,
+            user_id=current_user_id
         )
 
         # 3. 处理错误情况
@@ -37,6 +42,11 @@ async def chat(request: Request):
 
 
 @router.websocket("/ws/message")
-async def websocket_chat(websocket: WebSocket):
+async def websocket_chat(
+        websocket: WebSocket,
+        user_id: str = Query(default=None)
+):
     """WebSocket 聊天端点 - 支持流式响应和文件传输"""
+    # 将 user_id 存储在 websocket state 中，供后续处理使用
+    websocket.state.user_id = user_id
     await websocket_service.handle_connection(websocket)
