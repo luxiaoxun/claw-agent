@@ -91,7 +91,7 @@ class FeishuAdapter(IChannelAdapter):
                 return
 
             logger.info(
-                f"Feishu event: user={normalized.user_id}, chat={normalized.chat_id}, content={normalized.content[:50]}...")
+                f"Feishu event: user_id={normalized.user_id}, chat_id={normalized.chat_id}, content={normalized.content[:50]}...")
 
             # Route the message asynchronously (non-blocking for Feishu event callback)
             import asyncio

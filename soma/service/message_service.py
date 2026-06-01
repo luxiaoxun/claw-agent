@@ -16,6 +16,7 @@ class MessageService:
         self.db_manager = db_manager
 
     def save_round_message(self, session_id: str,
+                           user_id: str,
                            user_message: str,
                            ai_message: str,
                            message_chain: List[Any],
@@ -34,6 +35,7 @@ class MessageService:
             if not db_session:
                 db_session = SessionModel(
                     session_id=session_id,
+                    user_id=user_id,
                     title=f"会话_{session_id[:8]}"
                 )
                 session.add(db_session)

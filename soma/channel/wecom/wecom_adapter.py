@@ -92,7 +92,7 @@ class WeComAdapter(IChannelAdapter):
                 return
 
             logger.info(
-                f"WeCom event: user={normalized.user_id}, chat={normalized.chat_id}, content={normalized.content[:50]}...")
+                f"WeCom event: user_id={normalized.user_id}, chat_id={normalized.chat_id}, content={normalized.content[:50]}...")
 
             # Cache frame for response routing
             msg_id = normalized.message_id or f"{normalized.user_id}_{normalized.chat_id}"

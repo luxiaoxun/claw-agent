@@ -178,6 +178,7 @@ class ContextChatMessageHistory(BaseChatMessageHistory):
 
             round_id = self.message_service.save_round_message(
                 session_id=self.session_id,
+                user_id=self.user_id,
                 user_message=user_message,
                 ai_message=ai_response,
                 message_chain=message_chain,

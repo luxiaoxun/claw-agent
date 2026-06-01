@@ -11,7 +11,7 @@ class WeComParser:
         """
         Parse a WeCom frame (from aibot SDK) into a NormalizedMessage.
 
-        Single chat: chattype=single, from.userid=用户ID, no chatid
+        Single chat: chattype=single, from.userid=用户ID, chatid=aibotid
         Group chat: chattype=group, from.userid=发送者, chatid=群ID
 
         Returns:
@@ -28,7 +28,10 @@ class WeComParser:
             from_userid = body.get('from', {}).get('userid', '')
 
             # Group chat ID (only present in group chat)
-            chat_id = body.get('chatid', '') if is_group else ''
+            if is_group:
+                chat_id = body.get('chatid', '')
+            else:
+                chat_id = body.get('aibotid', '')
 
             # Message ID
             message_id = body.get('msgid', '')
@@ -40,7 +43,7 @@ class WeComParser:
             return NormalizedMessage(
                 platform="wecom",
                 user_id=from_userid,
-                chat_id=chat_id,  # empty string for single chat (uses user_id)
+                chat_id=chat_id,
                 message_id=message_id,
                 message_type=msg_type,
                 content=text_content,

@@ -61,9 +61,12 @@ async def list_sessions(
     try:
         logger.info(f"获取会话列表: user_id={current_user_id}, limit={limit}, offset={offset}")
 
+        # admin 用户可以查看所有会话
+        query_user_id = None if current_user_id == "admin" else current_user_id
+
         # 使用 session_service 获取会话列表
         sessions = database_service.session_service.list_sessions(
-            user_id=current_user_id,
+            user_id=query_user_id,
             limit=limit,
             offset=offset
         )
@@ -99,16 +102,24 @@ async def list_sessions(
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str):
+async def get_session(
+        session_id: str,
+        current_user_id: str = Depends(get_current_user_id)
+):
     """获取单个会话详情"""
     try:
-        logger.info(f"获取会话详情: session_id={session_id}")
+        logger.info(f"获取会话详情: session_id={session_id}, user_id={current_user_id}")
 
         # 使用 session_service 获取会话
         session = database_service.session_service.get_session(session_id)
         if not session:
             logger.warning(f"会话不存在: {session_id}")
             return fail_response(message="会话不存在")
+
+        # 检查权限：admin 可以查看所有会话，普通用户只能查看自己的
+        if current_user_id != "admin" and session.get("user_id") != current_user_id:
+            logger.warning(f"无权限查看会话: session_id={session_id}, user_id={current_user_id}")
+            return fail_response(message="无权限访问该会话")
 
         # 使用 message_service 获取轮次数
         round_count = database_service.message_service.get_message_rounds_count(session_id)
@@ -168,10 +179,25 @@ async def create_session(
 
 
 @router.put("/{session_id}")
-async def update_session(session_id: str, update_data: SessionUpdate):
+async def update_session(
+        session_id: str,
+        update_data: SessionUpdate,
+        current_user_id: str = Depends(get_current_user_id)
+):
     """更新会话信息（如标题）"""
     try:
-        logger.info(f"更新会话: session_id={session_id}, title={update_data.title}")
+        logger.info(f"更新会话: session_id={session_id}, title={update_data.title}, user_id={current_user_id}")
+
+        # 检查会话是否存在
+        session = database_service.session_service.get_session(session_id)
+        if not session:
+            logger.warning(f"会话不存在: {session_id}")
+            return fail_response(message="会话不存在")
+
+        # 检查权限：admin 可以更新所有会话，普通用户只能更新自己的
+        if current_user_id != "admin" and session.get("user_id") != current_user_id:
+            logger.warning(f"无权限更新会话: session_id={session_id}, user_id={current_user_id}")
+            return fail_response(message="无权限操作该会话")
 
         # 使用 session_service 更新会话标题
         success = database_service.session_service.update_session_title(
@@ -191,10 +217,24 @@ async def update_session(session_id: str, update_data: SessionUpdate):
 
 
 @router.delete("/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(
+        session_id: str,
+        current_user_id: str = Depends(get_current_user_id)
+):
     """删除会话"""
     try:
-        logger.info(f"删除会话: session_id={session_id}")
+        logger.info(f"删除会话: session_id={session_id}, user_id={current_user_id}")
+
+        # 检查会话是否存在
+        session = database_service.session_service.get_session(session_id)
+        if not session:
+            logger.warning(f"会话不存在: {session_id}")
+            return fail_response(message="会话不存在")
+
+        # 检查权限：admin 可以删除所有会话，普通用户只能删除自己的
+        if current_user_id != "admin" and session.get("user_id") != current_user_id:
+            logger.warning(f"无权限删除会话: session_id={session_id}, user_id={current_user_id}")
+            return fail_response(message="无权限操作该会话")
 
         # 使用 session_service 删除会话
         success = database_service.session_service.delete_session(session_id)
@@ -212,7 +252,8 @@ async def delete_session(session_id: str):
 
 @router.get("/{session_id}/messages")
 async def get_session_messages(
-        session_id: str
+        session_id: str,
+        current_user_id: str = Depends(get_current_user_id)
 ):
     """
     获取会话的对话轮次列表（新接口）
@@ -224,6 +265,11 @@ async def get_session_messages(
         if not session:
             logger.warning(f"会话不存在，无法获取轮次: {session_id}")
             return fail_response(message="会话不存在")
+
+        # 检查权限：admin 可以查看所有会话，普通用户只能查看自己的
+        if current_user_id != "admin" and session.get("user_id") != current_user_id:
+            logger.warning(f"无权限查看会话轮次: session_id={session_id}, user_id={current_user_id}")
+            return fail_response(message="无权限访问该会话")
 
         # 使用 message_service 获取对话轮次
         rounds = database_service.message_service.load_messages(
@@ -259,9 +305,12 @@ async def get_statistics(current_user_id: str = Depends(get_current_user_id)):
     try:
         logger.info(f"获取统计信息: user_id={current_user_id}")
 
+        # admin 用户可以查看所有会话的统计
+        query_user_id = None if current_user_id == "admin" else current_user_id
+
         # 获取所有会话
         sessions = database_service.session_service.list_sessions(
-            user_id=current_user_id,
+            user_id=query_user_id,
             limit=10000,  # 获取所有会话用于统计
             offset=0
         )
