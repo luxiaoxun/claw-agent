@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    image: soma-backend:1.0.0-minimal
+    image: soma-backend:1.0.0
     container_name: soma-backend
     network_mode: host
     environment:

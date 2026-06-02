@@ -100,7 +100,7 @@ start() {
 stop() {
     log_info "停止 Soma 服务..."
     cd "$SCRIPT_DIR"
-    $DOCKER_COMPOSE down
+    $DOCKER_COMPOSE --env-file "$PROJECT_ROOT/.env" down
     log_info "服务已停止"
 }
 

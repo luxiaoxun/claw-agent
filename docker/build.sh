@@ -36,39 +36,19 @@ check_docker() {
     log_info "Docker 版本: $(docker --version)"
 }
 
-# Build backend full image (with Node.js)
-build_backend_full() {
-    log_info "构建后端镜像完整版 (soma-backend:${VERSION}-full)..."
-
-    docker rmi soma-backend:${VERSION}-full 2>/dev/null || true
-
-    docker build \
-        --no-cache \
-        -f "$SCRIPT_DIR/Dockerfile.backend.full" \
-        -t soma-backend:${VERSION}-full \
-        "$PROJECT_ROOT"
-
-    log_info "后端镜像完整版构建完成"
-}
-
-# Build backend minimal image (without Node.js)
-build_backend_minimal() {
-    log_info "构建后端镜像精简版 (soma-backend:${VERSION}-minimal)..."
-
-    docker rmi soma-backend:${VERSION}-minimal 2>/dev/null || true
-
-    docker build \
-        --no-cache \
-        -f "$SCRIPT_DIR/Dockerfile.backend.minimal" \
-        -t soma-backend:${VERSION}-minimal \
-        "$PROJECT_ROOT"
-
-    log_info "后端镜像精简版构建完成"
-}
-
-# Build backend image (default: minimal)
+# Build backend image
 build_backend() {
-    build_backend_minimal
+    log_info "构建后端镜像 (soma-backend:${VERSION})..."
+
+    docker rmi soma-backend:${VERSION} 2>/dev/null || true
+
+    docker build \
+        --no-cache \
+        -f "$SCRIPT_DIR/Dockerfile.backend" \
+        -t soma-backend:${VERSION} \
+        "$PROJECT_ROOT"
+
+    log_info "后端镜像构建完成"
 }
 
 # Build frontend image
@@ -130,14 +110,12 @@ usage() {
     echo "用法: $0 <命令>"
     echo ""
     echo "命令:"
-    echo "  build          构建所有镜像 (后端精简版 + 前端)"
-    echo "  backend       仅构建后端镜像 (精简版)"
-    echo "  backend-full  仅构建后端镜像 (完整版，含 Node.js)"
-    echo "  backend-minimal 仅构建后端镜像 (精简版，无 Node.js)"
-    echo "  frontend      仅构建前端镜像"
-    echo "  images        显示已构建的镜像"
+    echo "  build            构建所有镜像"
+    echo "  backend          构建后端镜像"
+    echo "  frontend         构建前端镜像"
+    echo "  images           显示已构建的镜像"
     echo "  push <registry>  推送镜像到私有仓库"
-    echo "  help          显示帮助信息"
+    echo "  help             显示帮助信息"
     echo ""
 }
 
@@ -150,15 +128,7 @@ case "${1:-help}" in
         ;;
     backend)
         check_docker
-        build_backend_minimal
-        ;;
-    backend-full)
-        check_docker
-        build_backend_full
-        ;;
-    backend-minimal)
-        check_docker
-        build_backend_minimal
+        build_backend
         ;;
     frontend)
         check_docker
