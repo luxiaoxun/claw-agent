@@ -194,12 +194,6 @@ class WebSocketConnectionManager:
             except Exception as e:
                 logger.error(f"向客户端 {client_id} 发送消息失败: {str(e)}")
 
-    async def broadcast(self, message: dict, exclude_client: str = None):
-        """向所有客户端广播消息"""
-        for client_id, conn in self.active_connections.items():
-            if client_id != exclude_client:
-                await self.send_to_client(client_id, message)
-
     def get_active_connections_count(self) -> int:
         """获取活跃连接数"""
         return len(self.active_connections)

@@ -44,9 +44,13 @@ async def chat(
 @router.websocket("/ws/message")
 async def websocket_chat(
         websocket: WebSocket,
-        user_id: str = Query(default=None)
+        token: str = Query(default=None)
 ):
     """WebSocket 聊天端点 - 支持流式响应和文件传输"""
+    # 使用 AuthService 验证 token 并获取 user_id
+    from soma.service.auth_service import auth_service
+    user_id = await auth_service.verify_token(token)
+
     # 将 user_id 存储在 websocket state 中，供后续处理使用
     websocket.state.user_id = user_id
     await websocket_service.handle_connection(websocket)

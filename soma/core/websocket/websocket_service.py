@@ -24,7 +24,7 @@ class WebSocketService:
             websocket: WebSocket连接对象
         """
         client_id = None
-        # 从 websocket.state 获取 user_id（由 chat_router 设置）
+        # 从 websocket.state 获取 user_id
         user_id = getattr(websocket.state, "user_id", None)
         try:
             # 1. 接受连接
