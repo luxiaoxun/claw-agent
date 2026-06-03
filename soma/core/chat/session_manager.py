@@ -35,7 +35,7 @@ class SessionManager:
     @property
     def deep_agent(self):
         """通过 AgentManager 获取共享的 Agent 实例"""
-        return agent_manager.get_agent()
+        return agent_manager.agent
 
     @property
     def session_service(self):

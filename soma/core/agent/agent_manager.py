@@ -28,6 +28,13 @@ class AgentManager:
         self._deep_agent = None
         logger.info("AgentManager 单例创建")
 
+    @property
+    def agent(self) -> DeepAgent:
+        """获取共享的 DeepAgent 实例"""
+        if self._deep_agent is None:
+            raise RuntimeError("Agent 尚未初始化，请先调用 initialize()")
+        return self._deep_agent
+
     async def initialize(self):
         """初始化 Agent 管理器"""
         if self._deep_agent is not None:

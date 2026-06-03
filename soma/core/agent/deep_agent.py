@@ -8,6 +8,7 @@ from soma.core.tool import skill_load, file_read, file_write, file_edit, bash, d
     data_search, web_fetch, web_search, api_request, csv_read, csv_write, csv_filter, glob, grep
 from soma.core.rag.rag_tool import rag_search, rag_ingest
 from soma.core.agent.prompt_manager import PromptManager
+from soma.core.agent.llm_config import LLMConfig
 from soma.utils.message_handler import MessageHandler
 from soma.utils.token_usage import extract_token_usage_from_output
 from soma.config.settings import settings
@@ -32,6 +33,9 @@ class DeepAgent:
         self.mcp_tools: List = []
         self.use_mcp = settings.USE_MCP
 
+        # LLM 配置（支持运行时动态更新）
+        self.llm_config = LLMConfig.from_settings()
+
         # Agent
         self.llm: Optional[BaseChatModel] = None
         self.agent = None
@@ -54,9 +58,14 @@ class DeepAgent:
             # 设置工具列表到提示词管理器（动态生成工具列表）
             self.prompt_manager.set_tools(all_tools)
             self._build_base_system_prompt()
-            self._create_agent(all_tools)
 
-            logger.info(f"Agent初始化完成，工具数: {len(all_tools)}")
+            # 只有 LLM 初始化成功后才创建 agent
+            if self.llm is not None:
+                self._create_agent(all_tools)
+                logger.info(f"Agent初始化完成，工具数: {len(all_tools)}")
+            else:
+                logger.warning("Agent创建跳过：LLM未正确配置，需要通过API设置LLM参数")
+
             return self
 
         except Exception as e:
@@ -64,18 +73,26 @@ class DeepAgent:
             raise
 
     def _init_llm(self):
-        """初始化LLM"""
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY 未设置")
+        """初始化LLM，优先使用运行时配置，其次使用 settings"""
+        if not self.llm_config.is_configured():
+            logger.warning(
+                f"LLM配置不完整，当前配置: {self.llm_config.to_dict()}。"
+                f"请通过API设置LLM参数，或在.env中配置OPENAI_API_KEY"
+            )
+            return
 
-        self.llm = init_chat_model(
-            model_provider=settings.LLM_MODEL_PROVIDER,
-            model=settings.LLM_MODEL,
-            temperature=settings.LLM_TEMPERATURE,
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_BASE_URL
-        )
-        logger.info(f"LLM初始化成功: {settings.LLM_MODEL}")
+        try:
+            self.llm = init_chat_model(
+                model_provider=self.llm_config.model_provider,
+                model=self.llm_config.model,
+                temperature=self.llm_config.temperature,
+                api_key=self.llm_config.api_key,
+                base_url=self.llm_config.base_url
+            )
+            logger.info(f"LLM初始化成功: {self.llm_config.model}")
+        except Exception as e:
+            logger.warning(f"LLM初始化失败: {str(e)}，系统将使用API动态配置")
+            self.llm = None
 
     async def _load_mcp_tools(self):
         """加载MCP工具"""
@@ -113,8 +130,41 @@ class DeepAgent:
         all_tools = self.base_tools + self.mcp_tools
         self.prompt_manager.set_tools(all_tools)
         self.system_prompt = self.prompt_manager.get_dynamic_prompt()
-        self._create_agent(all_tools)
-        logger.info("Agent重建完成")
+        if self.llm is not None:
+            self._create_agent(all_tools)
+            logger.info("Agent重建完成")
+        else:
+            logger.warning("Agent重建跳过：LLM未正确配置")
+
+    def update_llm_config(self, config_dict: dict) -> bool:
+        """
+        更新 LLM 配置并重建 Agent
+        Returns:
+            True: 成功，False: 失败
+        """
+        old_config = self.llm_config.to_dict()
+        self.llm_config.update_from_dict(config_dict)
+
+        if not self.llm_config.is_configured():
+            logger.error("LLM配置不完整，请提供完整的配置信息")
+            self.llm_config.update_from_dict(old_config)
+            return False
+
+        try:
+            self._init_llm()
+            all_tools = self.base_tools + self.mcp_tools
+            self.prompt_manager.set_tools(all_tools)
+            self._build_base_system_prompt()
+            self._create_agent(all_tools)
+            logger.info(f"LLM配置已更新并重建Agent，新配置: {self.llm_config.to_dict()}")
+            return True
+        except Exception as e:
+            logger.error(f"LLM配置更新失败: {str(e)}")
+            return False
+
+    def get_llm_config(self) -> dict:
+        """获取当前 LLM 配置（敏感信息隐藏）"""
+        return self.llm_config.to_dict()
 
     async def process(self, message: str, chat_history: Optional[List[BaseMessage]] = None) -> Dict[str, Any]:
         """
